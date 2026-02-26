@@ -62,7 +62,7 @@ def test_call_jsonrpc_error(client: FulfilClient, httpx_mock):
 
 def test_call_401(client: FulfilClient, httpx_mock):
     httpx_mock.add_response(status_code=401)
-    with pytest.raises(AuthError, match="Invalid or expired API key"):
+    with pytest.raises(AuthError, match="Invalid or expired credentials"):
         client.call("system.version")
 
 

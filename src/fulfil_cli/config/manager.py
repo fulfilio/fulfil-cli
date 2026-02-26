@@ -112,3 +112,13 @@ class ConfigManager:
         """Remove all workspaces and clear the active workspace."""
         self.set("workspaces", [])
         self.delete("workspace")
+
+    # --- Auth method management ---
+
+    def get_auth_method(self, workspace: str) -> str:
+        """Get the auth method for a workspace. Returns 'api_key' or 'oauth'."""
+        return self.get(f"workspace_auth.{workspace}.method", "api_key")
+
+    def set_auth_method(self, workspace: str, method: str) -> None:
+        """Set the auth method for a workspace."""
+        self.set(f"workspace_auth.{workspace}.method", method)

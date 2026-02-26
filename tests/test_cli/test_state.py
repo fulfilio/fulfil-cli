@@ -78,7 +78,7 @@ class TestGetClient:
         monkeypatch.delenv("FULFIL_API_KEY", raising=False)
         set_globals()
 
-        with pytest.raises(AuthError, match="No API key"):
+        with pytest.raises(AuthError, match="No credentials found"):
             get_client()
 
     def test_set_globals_resets_cache(self, monkeypatch):

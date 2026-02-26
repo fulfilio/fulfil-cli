@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -24,25 +25,31 @@ class FulfilClient:
     def __init__(
         self,
         workspace: str,
-        api_key: str,
+        api_key: str | None = None,
         *,
+        access_token: str | None = None,
+        token_refresher: Callable[[], str] | None = None,
         base_url: str | None = None,
         timeout: float = 30.0,
     ) -> None:
         self.workspace = workspace
+        self._token_refresher = token_refresher
         if base_url:
             self.url = f"{base_url.rstrip('/')}/api/v3/jsonrpc"
         else:
             self.url = f"https://{workspace}/api/v3/jsonrpc"
         self._request_id = 0
-        self._client = httpx.Client(
-            headers={
-                "X-API-KEY": api_key,
-                "Content-Type": "application/json",
-                "User-Agent": f"fulfil-cli/{__version__}",
-            },
-            timeout=timeout,
-        )
+
+        headers: dict[str, str] = {
+            "Content-Type": "application/json",
+            "User-Agent": f"fulfil-cli/{__version__}",
+        }
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
+        elif api_key:
+            headers["X-API-KEY"] = api_key
+
+        self._client = httpx.Client(headers=headers, timeout=timeout)
 
     def call(self, method: str, *args: Any, **params: Any) -> Any:
         """Make a single JSON-RPC call. Returns the result or raises.
@@ -101,8 +108,16 @@ class FulfilClient:
             )
 
         if response.status_code == 401:
+            if self._token_refresher and not getattr(self, "_retrying", False):
+                new_token = self._token_refresher()
+                self._client.headers["Authorization"] = f"Bearer {new_token}"
+                self._retrying = True
+                try:
+                    return self._send(payload)
+                finally:
+                    self._retrying = False
             raise AuthError(
-                message="Invalid or expired API key",
+                message="Invalid or expired credentials",
                 hint="Run 'fulfil auth login' to re-authenticate.",
             )
         if response.status_code == 403:
