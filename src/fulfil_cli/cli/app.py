@@ -85,6 +85,8 @@ app = typer.Typer(
         '  fulfil customer_shipment count --where \'{"state": "waiting"}\'\n\n'
         "  # Send a raw JSON-RPC call\n"
         '  fulfil api \'{"method": "system.version", "params": {}}\'\n\n'
+        "  # Search documentation\n"
+        '  fulfil docs "how to create sales orders"\n\n'
         "  # List available models\n"
         "  fulfil models"
     ),
@@ -237,6 +239,36 @@ def reports_group(ctx: click.Context, json_flag: bool) -> None:
 def reports_list_cmd(ctx: click.Context, json_flag: bool) -> None:
     """List all available reports."""
     _list_reports(json_flag)
+
+
+@app.command()
+def docs(
+    query: str = typer.Argument(..., help="Search query for Fulfil documentation"),
+    json_flag: bool = typer.Option(False, "--json", help="Output as JSON"),
+) -> None:
+    """Search Fulfil documentation."""
+    try:
+        client = get_client()
+        results = client.call("system.search_docs", query=query)
+    except FulfilError as exc:
+        _handle_error(exc)
+
+    if not results:
+        console.print("[dim]No results found.[/dim]")
+        raise typer.Exit()
+
+    if json_flag:
+        output(results, json_flag=True)
+    else:
+        from rich.markdown import Markdown
+        from rich.panel import Panel
+
+        out = Console()
+        for doc in results:
+            title = doc.get("title", "Untitled")
+            url = doc.get("url", "")
+            content = doc.get("content", "").strip()
+            out.print(Panel(Markdown(content), title=title, subtitle=url, expand=True))
 
 
 @app.command(name="getting-started")
