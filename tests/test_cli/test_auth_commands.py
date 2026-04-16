@@ -71,6 +71,53 @@ class TestLogin:
         assert result.exit_code == 4
         assert "failed" in result.stdout.lower()
 
+    def test_login_keyring_rejected_macos(self, httpx_mock, jsonrpc_success, tmp_config):
+        """macOS keyring rejection should surface the keychain-delete remediation."""
+        from keyring.errors import PasswordSetError
+
+        httpx_mock.add_response(json=jsonrpc_success("1.0.0"))
+
+        with (
+            _patch_config(tmp_config),
+            patch("fulfil_cli.auth.keyring_store.sys.platform", "darwin"),
+            patch(
+                "fulfil_cli.auth.keyring_store.keyring.set_password",
+                side_effect=PasswordSetError("(-25244, 'Unknown Error')"),
+            ),
+        ):
+            result = runner.invoke(
+                app, ["auth", "login", "--workspace", "acme.fulfil.io", "--api-key", "sk_test"]
+            )
+
+        assert result.exit_code == 3
+        output = result.stdout + result.stderr
+        assert "security delete-generic-password" in output
+        assert "acme.fulfil.io" not in tmp_config.workspaces
+
+    def test_login_keyring_rejected_linux(self, httpx_mock, jsonrpc_success, tmp_config):
+        """Non-macOS keyring rejection should surface the generic unlock remediation."""
+        from keyring.errors import KeyringLocked
+
+        httpx_mock.add_response(json=jsonrpc_success("1.0.0"))
+
+        with (
+            _patch_config(tmp_config),
+            patch("fulfil_cli.auth.keyring_store.sys.platform", "linux"),
+            patch(
+                "fulfil_cli.auth.keyring_store.keyring.set_password",
+                side_effect=KeyringLocked("keyring is locked"),
+            ),
+        ):
+            result = runner.invoke(
+                app, ["auth", "login", "--workspace", "acme.fulfil.io", "--api-key", "sk_test"]
+            )
+
+        assert result.exit_code == 3
+        output = result.stdout + result.stderr
+        assert "unlocked" in output.lower()
+        assert "security delete-generic-password" not in output
+        assert "acme.fulfil.io" not in tmp_config.workspaces
+
 
 class TestLogout:
     def test_logout_current(self, tmp_config):

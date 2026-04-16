@@ -19,6 +19,7 @@ from fulfil_cli.auth.keyring_store import (
     store_oauth_tokens,
 )
 from fulfil_cli.auth.oauth import OAuthTokens, run_oauth_flow
+from fulfil_cli.cli.commands.common import handle_error
 from fulfil_cli.client.errors import EXIT_CONFIG, EXIT_GENERAL, AuthError, FulfilError
 from fulfil_cli.client.http import FulfilClient
 from fulfil_cli.config.manager import ConfigManager
@@ -45,7 +46,10 @@ def _login_api_key(workspace: str, api_key: str | None, config: ConfigManager) -
             "(v3 API may not be deployed yet).[/yellow]"
         )
 
-    store_api_key(workspace, api_key)
+    try:
+        store_api_key(workspace, api_key)
+    except FulfilError as exc:
+        handle_error(exc, context="auth")
     config.set_auth_method(workspace, "api_key")
     config.add_workspace(workspace)
     config.workspace = workspace
@@ -77,7 +81,10 @@ def _login_oauth(workspace: str, config: ConfigManager) -> None:
             "(v3 API may not be deployed yet).[/yellow]"
         )
 
-    store_oauth_tokens(workspace, tokens.to_json().decode())
+    try:
+        store_oauth_tokens(workspace, tokens.to_json().decode())
+    except FulfilError as exc:
+        handle_error(exc, context="auth")
     config.set_auth_method(workspace, "oauth")
     config.add_workspace(workspace)
     config.workspace = workspace
