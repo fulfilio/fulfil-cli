@@ -49,6 +49,13 @@ class ConfigError(FulfilError):
 
 
 @dataclass
+class KeyringError(ConfigError):
+    """System keyring storage is unavailable or rejected a write."""
+
+    exit_code: int = field(default=EXIT_CONFIG)
+
+
+@dataclass
 class AuthError(FulfilError):
     """Authentication failed."""
 
