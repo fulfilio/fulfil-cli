@@ -10,7 +10,7 @@ import click
 import typer
 from rich.console import Console
 
-from fulfil_cli.cli.commands.common import handle_error, parse_json_arg
+from fulfil_cli.cli.commands.common import handle_error, parse_json_arg, resolve_value_or_file
 from fulfil_cli.cli.state import AppContext, format_option
 from fulfil_cli.client.errors import EXIT_NOT_FOUND, EXIT_OK, EXIT_USAGE, FulfilError
 from fulfil_cli.output.formatter import output, output_model_describe
@@ -313,7 +313,10 @@ def create_model_group(model_name: str) -> click.Group:
     @click.option(
         "--data",
         default=None,
-        help=("Extra method arguments as a JSON object. Example: '{\"warehouse\": 1}'"),
+        help=(
+            "Extra method arguments as a JSON object. Example: '{\"warehouse\": 1}'. "
+            "Prefix with '@' to read from a file: --data @payload.json"
+        ),
     )
     @format_option
     @click.pass_context
@@ -339,7 +342,7 @@ def create_model_group(model_name: str) -> click.Group:
         if ids:
             params["ids"] = _parse_ids(ids)
         if data:
-            extra = parse_json_arg(data, "--data")
+            extra = parse_json_arg(resolve_value_or_file(data, "--data"), "--data")
             if isinstance(extra, dict):
                 params.update(extra)
 
