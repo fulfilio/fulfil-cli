@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import difflib
 import sys
-from typing import IO, Any
+from typing import Any
 
-import click
 import typer
 from rich.console import Console
 
@@ -52,59 +51,48 @@ def _parse_order(value: str) -> dict[str, str]:
     return result
 
 
-def create_model_group(model_name: str) -> click.Group:
-    """Create a Click group for a model with all standard actions."""
+def create_model_group(model_name: str) -> typer.Typer:
+    """Create a Typer app for a model with all standard actions."""
 
-    @click.group(name=model_name, help=f"Interact with {model_name} records.")
-    @click.pass_context
-    def model_group(ctx: click.Context) -> None:
-        pass
+    model_group = typer.Typer(name=model_name, help=f"Interact with {model_name} records.")
 
     @model_group.command("list")
-    @click.option(
-        "--where",
-        default=None,
-        help=(
-            "MongoDB-style JSON filter. "
-            'Equality: \'{"state": "confirmed"}\'. '
-            "Operators (gt, gte, lt, lte, ne, in, not_in, contains, startswith, endswith): "
-            '\'{"total_amount": {"gte": 100}}\'. '
-            'OR logic: \'{"or": [{"state": "draft"}, {"state": "confirmed"}]}\''
-        ),
-    )
-    @click.option(
-        "--fields",
-        "fields_str",
-        default=None,
-        help="Comma-separated field names, e.g. name,state,sale_date",
-    )
-    @click.option(
-        "--order",
-        default=None,
-        help=(
-            "Sort order as field:direction pairs, comma-separated. "
-            "Direction is ASC or DESC (default: ASC). "
-            "Examples: sale_date:desc  or  sale_date:desc,name:asc  or  name"
-        ),
-    )
-    @click.option(
-        "--cursor",
-        default=None,
-        help="Opaque cursor for fetching the next page (from previous response).",
-    )
-    @click.option(
-        "--page-size", "--limit", default=20, type=int, help="Records per page (default: 20)"
-    )
-    @format_option
-    @click.pass_context
     def list_cmd(
-        ctx: click.Context,
-        where: str | None,
-        fields_str: str | None,
-        order: str | None,
-        cursor: str | None,
-        page_size: int,
-        output_format: str | None,
+        ctx: typer.Context,
+        where: str | None = typer.Option(
+            None,
+            "--where",
+            help=(
+                "MongoDB-style JSON filter. "
+                'Equality: \'{"state": "confirmed"}\'. '
+                "Operators (gt, gte, lt, lte, ne, in, not_in, contains, startswith, endswith): "
+                '\'{"total_amount": {"gte": 100}}\'. '
+                'OR logic: \'{"or": [{"state": "draft"}, {"state": "confirmed"}]}\''
+            ),
+        ),
+        fields_str: str | None = typer.Option(
+            None,
+            "--fields",
+            help="Comma-separated field names, e.g. name,state,sale_date",
+        ),
+        order: str | None = typer.Option(
+            None,
+            "--order",
+            help=(
+                "Sort order as field:direction pairs, comma-separated. "
+                "Direction is ASC or DESC (default: ASC). "
+                "Examples: sale_date:desc  or  sale_date:desc,name:asc  or  name"
+            ),
+        ),
+        cursor: str | None = typer.Option(
+            None,
+            "--cursor",
+            help="Opaque cursor for fetching the next page (from previous response).",
+        ),
+        page_size: int = typer.Option(
+            20, "--page-size", "--limit", help="Records per page (default: 20)"
+        ),
+        output_format: str | None = format_option,
     ) -> None:
         """List records matching filters.
 
@@ -163,10 +151,11 @@ def create_model_group(model_name: str) -> click.Group:
             output(result, fmt=fmt, title=model_name)
 
     @model_group.command("get")
-    @click.argument("ids", type=str)
-    @format_option
-    @click.pass_context
-    def get_cmd(ctx: click.Context, ids: str, output_format: str | None) -> None:
+    def get_cmd(
+        ctx: typer.Context,
+        ids: str = typer.Argument(...),
+        output_format: str | None = format_option,
+    ) -> None:
         """Get records by ID(s). IDS is one or more comma-separated integers (e.g. 123 or 1,2,3)."""
         app_ctx: AppContext = ctx.obj
         parsed_ids = _parse_ids(ids)
@@ -183,10 +172,11 @@ def create_model_group(model_name: str) -> click.Group:
         output(result, fmt=app_ctx.get_effective_format(output_format), title=model_name)
 
     @model_group.command("create")
-    @click.argument("data", type=click.File("r"), default="-")
-    @format_option
-    @click.pass_context
-    def create_cmd(ctx: click.Context, data: IO[str], output_format: str | None) -> None:
+    def create_cmd(
+        ctx: typer.Context,
+        data: typer.FileText = typer.Argument("-"),
+        output_format: str | None = format_option,
+    ) -> None:
         """Create record(s) from JSON. Accepts a single object or an array.
 
         \b
@@ -211,11 +201,12 @@ def create_model_group(model_name: str) -> click.Group:
         output(result, fmt=app_ctx.get_effective_format(output_format))
 
     @model_group.command("update")
-    @click.argument("ids", type=str)
-    @click.argument("data", type=click.File("r"), default="-")
-    @format_option
-    @click.pass_context
-    def update_cmd(ctx: click.Context, ids: str, data: IO[str], output_format: str | None) -> None:
+    def update_cmd(
+        ctx: typer.Context,
+        ids: str = typer.Argument(...),
+        data: typer.FileText = typer.Argument("-"),
+        output_format: str | None = format_option,
+    ) -> None:
         """Update record(s) by ID.
 
         \b
@@ -239,10 +230,11 @@ def create_model_group(model_name: str) -> click.Group:
         output(result, fmt=app_ctx.get_effective_format(output_format))
 
     @model_group.command("delete")
-    @click.argument("ids", type=str)
-    @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
-    @click.pass_context
-    def delete_cmd(ctx: click.Context, ids: str, yes: bool) -> None:
+    def delete_cmd(
+        ctx: typer.Context,
+        ids: str = typer.Argument(...),
+        yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    ) -> None:
         """Permanently delete record(s) by ID. This cannot be undone.
 
         IDS is one or more comma-separated integers.
@@ -258,7 +250,7 @@ def create_model_group(model_name: str) -> click.Group:
                 )
                 raise typer.Exit(code=EXIT_USAGE)
             id_list = ", ".join(str(i) for i in parsed_ids)
-            if not click.confirm(
+            if not typer.confirm(
                 f"Delete {len(parsed_ids)} record(s) from {model_name} ({id_list})?"
             ):
                 console.print("[dim]Aborted.[/dim]")
@@ -274,17 +266,18 @@ def create_model_group(model_name: str) -> click.Group:
             console.print(f"[green]Deleted {len(parsed_ids)} record(s).[/green]")
 
     @model_group.command("count")
-    @click.option(
-        "--where",
-        default=None,
-        help=(
-            "MongoDB-style JSON filter (same syntax as list --where). "
-            'Example: \'{"state": "confirmed"}\''
+    def count_cmd(
+        ctx: typer.Context,
+        where: str | None = typer.Option(
+            None,
+            "--where",
+            help=(
+                "MongoDB-style JSON filter (same syntax as list --where). "
+                'Example: \'{"state": "confirmed"}\''
+            ),
         ),
-    )
-    @format_option
-    @click.pass_context
-    def count_cmd(ctx: click.Context, where: str | None, output_format: str | None) -> None:
+        output_format: str | None = format_option,
+    ) -> None:
         """Count records matching filters. Returns a single integer."""
         app_ctx: AppContext = ctx.obj
         params: dict[str, Any] = {}
@@ -304,25 +297,20 @@ def create_model_group(model_name: str) -> click.Group:
             console.print(str(result))
 
     @model_group.command("call")
-    @click.argument("method_name", type=str)
-    @click.option(
-        "--ids",
-        default=None,
-        help="Comma-separated record IDs to pass to the method, e.g. 1,2,3",
-    )
-    @click.option(
-        "--data",
-        default=None,
-        help=("Extra method arguments as a JSON object. Example: '{\"warehouse\": 1}'"),
-    )
-    @format_option
-    @click.pass_context
     def call_cmd(
-        ctx: click.Context,
-        method_name: str,
-        ids: str | None,
-        data: str | None,
-        output_format: str | None,
+        ctx: typer.Context,
+        method_name: str = typer.Argument(...),
+        ids: str | None = typer.Option(
+            None,
+            "--ids",
+            help="Comma-separated record IDs to pass to the method, e.g. 1,2,3",
+        ),
+        data: str | None = typer.Option(
+            None,
+            "--data",
+            help=("Extra method arguments as a JSON object. Example: '{\"warehouse\": 1}'"),
+        ),
+        output_format: str | None = format_option,
     ) -> None:
         """Call a custom method on the model.
 
@@ -352,11 +340,10 @@ def create_model_group(model_name: str) -> click.Group:
         output(result, fmt=app_ctx.get_effective_format(output_format))
 
     @model_group.command("describe")
-    @click.argument("endpoint_name", required=False, default=None)
-    @format_option
-    @click.pass_context
     def describe_cmd(
-        ctx: click.Context, endpoint_name: str | None, output_format: str | None
+        ctx: typer.Context,
+        endpoint_name: str | None = typer.Argument(None),
+        output_format: str | None = format_option,
     ) -> None:
         """Describe the model, or a specific endpoint.
 
@@ -379,10 +366,9 @@ def create_model_group(model_name: str) -> click.Group:
             output_model_describe(result, fmt=fmt)
 
     @model_group.command("fields")
-    @click.pass_context
-    def fields_cmd(ctx: click.Context) -> None:
+    def fields_cmd(ctx: typer.Context) -> None:
         """Alias for 'describe'."""
-        ctx.invoke(describe_cmd, endpoint_name=None)
+        describe_cmd(ctx, endpoint_name=None, output_format=None)
 
     return model_group
 

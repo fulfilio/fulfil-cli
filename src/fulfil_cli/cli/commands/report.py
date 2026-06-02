@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-import click
+import typer
 from rich.console import Console
 from rich.prompt import Confirm, IntPrompt, Prompt
 
@@ -81,71 +81,61 @@ def _prompt_params(
     return result
 
 
-def create_report_group(report_name: str) -> click.Group:
-    """Create a Click group for a report with execute and describe actions."""
+def create_report_group(report_name: str) -> typer.Typer:
+    """Create a Typer app for a report with execute and describe actions."""
 
-    @click.group(
+    report_group = typer.Typer(
         name=report_name,
         help=f"Interact with {report_name} report.",
-        invoke_without_command=True,
     )
-    @click.option(
-        "--params",
-        default=None,
-        help=(
-            "Report parameters as a JSON object. "
-            """Example: '{"date_from": "2024-01-01", "date_to": "2024-12-31", "warehouse": 1}'"""
+
+    @report_group.callback(invoke_without_command=True)
+    def report_callback(
+        ctx: typer.Context,
+        params: str | None = typer.Option(
+            None,
+            "--params",
+            help=(
+                "Report parameters as a JSON object. "
+                'Example: \'{"date_from": "2024-01-01", "date_to": "2024-12-31", '
+                '"warehouse": 1}\''
+            ),
         ),
-    )
-    @click.option(
-        "-i",
-        "--interactive",
-        is_flag=True,
-        default=False,
-        help=(
-            "Fetch the report schema and interactively prompt for each parameter. "
-            "Use 'describe' subcommand to see the schema without executing."
+        interactive: bool = typer.Option(
+            False,
+            "-i",
+            "--interactive",
+            help=(
+                "Fetch the report schema and interactively prompt for each parameter. "
+                "Use 'describe' subcommand to see the schema without executing."
+            ),
         ),
-    )
-    @format_option
-    @click.pass_context
-    def report_group(
-        ctx: click.Context,
-        params: str | None,
-        interactive: bool,
-        output_format: str | None,
+        output_format: str | None = format_option,
     ) -> None:
         if ctx.invoked_subcommand is None:
-            ctx.invoke(
-                execute_cmd, params=params, interactive=interactive, output_format=output_format
-            )
+            execute_cmd(ctx, params=params, interactive=interactive, output_format=output_format)
 
     @report_group.command("execute")
-    @click.option(
-        "--params",
-        default=None,
-        help=(
-            "Report parameters as a JSON object. "
-            """Example: '{"date_from": "2024-01-01", "date_to": "2024-12-31"}'"""
-        ),
-    )
-    @click.option(
-        "-i",
-        "--interactive",
-        is_flag=True,
-        default=False,
-        help=(
-            "Fetch the report schema and interactively prompt for each parameter. "
-            "Use 'describe' subcommand to see the schema without executing."
-        ),
-    )
-    @format_option
-    @click.pass_context
     def execute_cmd(
-        ctx: click.Context,
-        params: str | None,
-        interactive: bool,
-        output_format: str | None,
+        ctx: typer.Context,
+        params: str | None = typer.Option(
+            None,
+            "--params",
+            help=(
+                "Report parameters as a JSON object. "
+                """Example: '{"date_from": "2024-01-01", "date_to": "2024-12-31"}'"""
+            ),
+        ),
+        interactive: bool = typer.Option(
+            False,
+            "-i",
+            "--interactive",
+            help=(
+                "Fetch the report schema and interactively prompt for each parameter. "
+                "Use 'describe' subcommand to see the schema without executing."
+            ),
+        ),
+        output_format: str | None = format_option,
     ) -> None:
         """Execute the report with given parameters."""
         app_ctx: AppContext = ctx.obj
@@ -193,9 +183,10 @@ def create_report_group(report_name: str) -> click.Group:
         output_report(result, fmt=app_ctx.get_effective_format(output_format))
 
     @report_group.command("describe")
-    @format_option
-    @click.pass_context
-    def describe_cmd(ctx: click.Context, output_format: str | None) -> None:
+    def describe_cmd(
+        ctx: typer.Context,
+        output_format: str | None = format_option,
+    ) -> None:
         """Show the report's parameter description."""
         app_ctx: AppContext = ctx.obj
 
