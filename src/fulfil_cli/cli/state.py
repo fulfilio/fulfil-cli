@@ -6,7 +6,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 
-import click
+import typer
 
 from fulfil_cli.auth.api_key import resolve_credentials, resolve_workspace
 from fulfil_cli.auth.keyring_store import get_oauth_tokens, store_oauth_tokens
@@ -88,19 +88,35 @@ class AppContext:
         return self._client
 
 
-def get_app_ctx() -> AppContext:
-    """Get AppContext from the current Click context."""
-    return click.get_current_context().obj
+_current: AppContext | None = None
+
+
+def _set_current(ctx: AppContext) -> None:
+    global _current
+    _current = ctx
+
+
+def _get_current() -> AppContext | None:
+    return _current
 
 
 VALID_FORMATS = ("table", "json", "csv", "ndjson")
 
-format_option = click.option(
+
+def _validate_format(value: str | None) -> str | None:
+    if value is None:
+        return None
+    lowered = value.lower()
+    if lowered not in VALID_FORMATS:
+        raise typer.BadParameter(
+            f"Invalid format '{value}'. Choose from: {', '.join(VALID_FORMATS)}"
+        )
+    return lowered
+
+
+format_option = typer.Option(
+    None,
     "--format",
-    "output_format",
-    type=click.Choice(VALID_FORMATS, case_sensitive=False),
-    default=None,
-    expose_value=True,
-    is_eager=False,
-    help="Output format (default: table for TTY, json when piped)",
+    callback=_validate_format,
+    help="Output format: table, json, csv, ndjson (default: table for TTY, json when piped)",
 )

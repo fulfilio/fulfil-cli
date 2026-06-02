@@ -6,11 +6,10 @@ import json
 import sys
 from typing import Any, NoReturn
 
-import click
 import typer
 from rich.console import Console
 
-from fulfil_cli.cli.state import AppContext
+from fulfil_cli.cli import state
 from fulfil_cli.client.errors import EXIT_VALIDATION, FulfilError, ValidationError
 from fulfil_cli.output.json_output import print_json
 
@@ -20,12 +19,11 @@ console = Console(stderr=True)
 def handle_error(exc: FulfilError, *, context: str | None = None) -> NoReturn:
     """Format a FulfilError for the user and exit.
 
-    Uses the current Click context to determine output format.
+    Uses the current app context to determine output format.
     When *context* is provided (e.g. a model or report name), it is
     included in the output for orientation.
     """
-    ctx = click.get_current_context(silent=True)
-    app_ctx: AppContext | None = ctx.obj if ctx else None
+    app_ctx = state._get_current()
 
     if app_ctx and app_ctx.get_effective_format() != "table":
         err = exc.to_dict()

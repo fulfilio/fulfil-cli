@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-import click
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from fulfil_cli.cli.app import app
@@ -41,7 +41,7 @@ class TestParseIds:
         assert _parse_ids("1,2,3") == [1, 2, 3]
 
     def test_invalid_raises_exit(self):
-        with pytest.raises(click.exceptions.Exit) as exc_info:
+        with pytest.raises(typer.Exit) as exc_info:
             _parse_ids("abc")
         assert exc_info.value.exit_code == 2
 
