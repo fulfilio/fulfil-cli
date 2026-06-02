@@ -306,6 +306,26 @@ class TestCallCommand:
         assert body["params"]["ids"] == [42]
         assert body["params"]["force"] is True
 
+    def test_data_from_file(self, httpx_mock, cli_env, jsonrpc_success, tmp_path):
+        httpx_mock.add_response(json=jsonrpc_success({"ok": True}))
+
+        payload = tmp_path / "payload.json"
+        payload.write_text('{"warehouse": 7, "force": true}')
+
+        result = runner.invoke(app, ["sale_order", "call", "process", "--data", f"@{payload}"])
+        assert result.exit_code == 0, result.stdout + result.stderr
+
+        body = json.loads(httpx_mock.get_request().content)
+        assert body["params"]["warehouse"] == 7
+        assert body["params"]["force"] is True
+
+    def test_data_file_missing(self, cli_env):
+        result = runner.invoke(
+            app, ["sale_order", "call", "process", "--data", "@/no/such/file.json"]
+        )
+        assert result.exit_code == 7
+        assert "Cannot read file" in (result.stdout + result.stderr)
+
 
 class TestDescribeCommand:
     def test_full_describe(self, httpx_mock, cli_env, jsonrpc_success):
