@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "fulfil-cli"
-version = "0.2.0"
+version = "0.3.0"
 description = "The Fulfil CLI — primary interface for humans and AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
