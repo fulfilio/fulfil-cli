@@ -10,12 +10,13 @@ resolve them as Fulfil model or report names respectively.
 
 from __future__ import annotations
 
-import click
 import typer
 import typer.core
+import typer.main
 from rich.console import Console
 
 from fulfil_cli import __version__
+from fulfil_cli.cli import state
 from fulfil_cli.cli.commands import auth, config
 from fulfil_cli.cli.commands.api import api_cmd
 from fulfil_cli.cli.commands.common import handle_error
@@ -29,37 +30,37 @@ from fulfil_cli.output.formatter import output
 console = Console(stderr=True)
 
 
-class ReportGroup(click.Group):
-    """Click group that resolves unknown subcommands as report names."""
+class ReportGroup(typer.core.TyperGroup):
+    """Typer group that resolves unknown subcommands as report names."""
 
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+    def get_command(self, ctx: typer.Context, cmd_name: str):
         rv = super().get_command(ctx, cmd_name)
         if rv is not None:
             return rv
-        return create_report_group(cmd_name)
+        return typer.main.get_command(create_report_group(cmd_name))
 
 
 class FulfilGroup(typer.core.TyperGroup):
-    """Custom Click group that resolves unknown subcommands as model or report names."""
+    """Custom Typer group that resolves unknown subcommands as model or report names."""
 
     _dynamic_commands = ("models", "reports")
 
-    def list_commands(self, ctx: click.Context) -> list[str]:
+    def list_commands(self, ctx: typer.Context) -> list[str]:
         commands = super().list_commands(ctx)
         for name in self._dynamic_commands:
             if name not in commands:
                 commands.append(name)
         return commands
 
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+    def get_command(self, ctx: typer.Context, cmd_name: str):
         rv = super().get_command(ctx, cmd_name)
         if rv is not None:
             return rv
         if cmd_name == "models":
-            return models_group
+            return typer.main.get_command(models_group)
         if cmd_name == "reports":
-            return reports_group
-        return create_model_group(cmd_name)
+            return typer.main.get_command(reports_group)
+        return typer.main.get_command(create_model_group(cmd_name))
 
 
 app = typer.Typer(
@@ -130,6 +131,7 @@ def main_callback(
         quiet=quiet,
         output_format=output_format,
     )
+    state._set_current(ctx.obj)
 
 
 FORMAT_OPTION = typer.Option(
@@ -185,7 +187,7 @@ def _flatten_model_row(row: dict) -> dict:
 
 def _list_models(fmt: str, search: str | None = None) -> None:
     """Fetch and display all available models."""
-    app_ctx: AppContext = click.get_current_context().obj
+    app_ctx: AppContext = state._get_current()
     try:
         client = app_ctx.get_client()
         result = client.call("system.list_models")
@@ -211,11 +213,17 @@ def _list_models(fmt: str, search: str | None = None) -> None:
     output(result, fmt=fmt, title="Available Models")
 
 
-@click.group(name="models", help="List available models.", invoke_without_command=True)
-@click.option("--search", "-s", default=None, help="Filter by name, description, or category.")
-@format_option
-@click.pass_context
-def models_group(ctx: click.Context, search: str | None, output_format: str | None) -> None:
+models_group = typer.Typer(name="models", help="List available models.")
+
+
+@models_group.callback(invoke_without_command=True)
+def _models_callback(
+    ctx: typer.Context,
+    search: str | None = typer.Option(
+        None, "--search", "-s", help="Filter by name, description, or category."
+    ),
+    output_format: str | None = format_option,
+) -> None:
     """List all available models."""
     if ctx.invoked_subcommand is None:
         app_ctx: AppContext = ctx.obj
@@ -223,10 +231,13 @@ def models_group(ctx: click.Context, search: str | None, output_format: str | No
 
 
 @models_group.command("list")
-@click.option("--search", "-s", default=None, help="Filter by name, description, or category.")
-@format_option
-@click.pass_context
-def models_list_cmd(ctx: click.Context, search: str | None, output_format: str | None) -> None:
+def models_list_cmd(
+    ctx: typer.Context,
+    search: str | None = typer.Option(
+        None, "--search", "-s", help="Filter by name, description, or category."
+    ),
+    output_format: str | None = format_option,
+) -> None:
     """List all available models."""
     app_ctx: AppContext = ctx.obj
     _list_models(app_ctx.get_effective_format(output_format), search=search)
@@ -234,7 +245,7 @@ def models_list_cmd(ctx: click.Context, search: str | None, output_format: str |
 
 def _list_reports(fmt: str) -> None:
     """Fetch and display all available reports."""
-    app_ctx: AppContext = click.get_current_context().obj
+    app_ctx: AppContext = state._get_current()
     try:
         client = app_ctx.get_client()
         result = client.call("system.list_reports")
@@ -244,15 +255,18 @@ def _list_reports(fmt: str) -> None:
     output(result, fmt=fmt, title="Available Reports")
 
 
-@click.group(
+reports_group = typer.Typer(
     name="reports",
     cls=ReportGroup,
     help="Interact with reports.",
-    invoke_without_command=True,
 )
-@format_option
-@click.pass_context
-def reports_group(ctx: click.Context, output_format: str | None) -> None:
+
+
+@reports_group.callback(invoke_without_command=True)
+def _reports_callback(
+    ctx: typer.Context,
+    output_format: str | None = format_option,
+) -> None:
     """List all available reports."""
     if ctx.invoked_subcommand is None:
         app_ctx: AppContext = ctx.obj
@@ -260,9 +274,10 @@ def reports_group(ctx: click.Context, output_format: str | None) -> None:
 
 
 @reports_group.command("list")
-@format_option
-@click.pass_context
-def reports_list_cmd(ctx: click.Context, output_format: str | None) -> None:
+def reports_list_cmd(
+    ctx: typer.Context,
+    output_format: str | None = format_option,
+) -> None:
     """List all available reports."""
     app_ctx: AppContext = ctx.obj
     _list_reports(app_ctx.get_effective_format(output_format))
