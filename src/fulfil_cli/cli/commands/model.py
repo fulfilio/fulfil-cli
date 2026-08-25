@@ -164,18 +164,53 @@ def create_model_group(model_name: str) -> click.Group:
 
     @model_group.command("get")
     @click.argument("ids", type=str)
+    @click.option(
+        "--fields",
+        "fields_str",
+        default=None,
+        help="Comma-separated field names, e.g. name,state,sale_date",
+    )
     @format_option
     @click.pass_context
-    def get_cmd(ctx: click.Context, ids: str, output_format: str | None) -> None:
-        """Get records by ID(s). IDS is one or more comma-separated integers (e.g. 123 or 1,2,3)."""
+    def get_cmd(
+        ctx: click.Context, ids: str, fields_str: str | None, output_format: str | None
+    ) -> None:
+        """Get records by ID(s). IDS is one or more comma-separated integers (e.g. 123 or 1,2,3).
+
+        Without --fields, returns a summary representation of each record —
+        not all fields. Use --fields to request specific fields ('describe'
+        lists all available fields).
+        """
         app_ctx: AppContext = ctx.obj
         parsed_ids = _parse_ids(ids)
+        fields = _parse_fields(fields_str)
 
         try:
             client = app_ctx.get_client()
-            result = client.call(f"model.{model_name}.serialize", parsed_ids)
+            if fields:
+                result = client.call(
+                    f"model.{model_name}.find",
+                    where={"id": {"in": parsed_ids}},
+                    fields=fields,
+                    page_size=len(parsed_ids),
+                )
+            else:
+                result = client.call(f"model.{model_name}.serialize", parsed_ids)
         except FulfilError as exc:
             handle_error(exc, context=model_name)
+
+        if fields:
+            records = result["data"] if isinstance(result, dict) and "data" in result else result
+            by_id = {record["id"]: record for record in records}
+            missing = [i for i in parsed_ids if i not in by_id]
+            if missing:
+                missing_str = ", ".join(str(i) for i in missing)
+                console.print(
+                    f"[red]No {model_name} record(s) found for ID(s): {missing_str}[/red]"
+                )
+                raise typer.Exit(code=EXIT_NOT_FOUND)
+
+            result = [by_id[i] for i in parsed_ids]
 
         if len(parsed_ids) == 1 and isinstance(result, list) and len(result) == 1:
             result = result[0]

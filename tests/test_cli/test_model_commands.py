@@ -168,6 +168,45 @@ class TestGetCommand:
         assert isinstance(data, list)
         assert len(data) == 2
 
+    def test_with_fields_routes_via_find(
+        self, httpx_mock, cli_env, jsonrpc_success, pagination_response
+    ):
+        httpx_mock.add_response(
+            json=jsonrpc_success(pagination_response([{"id": 42, "settings_json": {}}]))
+        )
+
+        result = runner.invoke(app, ["sale_order", "get", "42", "--fields", "settings_json"])
+        assert result.exit_code == 0
+
+        data = json.loads(result.stdout)
+        assert data == {"id": 42, "settings_json": {}}
+
+        body = json.loads(httpx_mock.get_request().content)
+        assert body["method"] == "model.sale_order.find"
+        assert body["params"]["where"] == {"id": {"in": [42]}}
+        assert body["params"]["fields"] == ["settings_json"]
+        assert body["params"]["page_size"] == 1
+
+    def test_with_fields_preserves_input_id_order(
+        self, httpx_mock, cli_env, jsonrpc_success, pagination_response
+    ):
+        httpx_mock.add_response(json=jsonrpc_success(pagination_response([{"id": 1}, {"id": 2}])))
+
+        result = runner.invoke(app, ["sale_order", "get", "2,1", "--fields", "id"])
+        assert result.exit_code == 0
+
+        data = json.loads(result.stdout)
+        assert [r["id"] for r in data] == [2, 1]
+
+    def test_with_fields_missing_id_exits_not_found(
+        self, httpx_mock, cli_env, jsonrpc_success, pagination_response
+    ):
+        httpx_mock.add_response(json=jsonrpc_success(pagination_response([{"id": 1}])))
+
+        result = runner.invoke(app, ["sale_order", "get", "1,999", "--fields", "id"])
+        assert result.exit_code == 5
+        assert "999" in result.output
+
     def test_invalid_ids(self, cli_env):
         result = runner.invoke(app, ["sale_order", "get", "abc"])
         assert result.exit_code == 2
