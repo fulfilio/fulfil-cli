@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, NoReturn
 
 import click
@@ -52,3 +53,21 @@ def parse_json_arg(value: str, arg_name: str) -> Any:
     except json.JSONDecodeError as exc:
         console.print(f"[red]Invalid JSON for {arg_name}: {exc}[/red]")
         raise typer.Exit(code=EXIT_VALIDATION) from None
+
+
+def resolve_value_or_file(value: str, arg_name: str) -> str:
+    """Return *value*, or the contents of the referenced file when prefixed with '@'.
+
+    Follows the curl/gh convention: '@path/to/file.json' reads from the file.
+    Use '\\@literal' to pass a value that actually starts with a literal '@'.
+    """
+    if value.startswith("\\@"):
+        return value[1:]
+    if value.startswith("@"):
+        path = Path(value[1:])
+        try:
+            return path.read_text()
+        except OSError as exc:
+            console.print(f"[red]Cannot read file for {arg_name}: {exc}[/red]")
+            raise typer.Exit(code=EXIT_VALIDATION) from None
+    return value
