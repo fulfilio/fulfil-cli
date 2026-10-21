@@ -111,9 +111,12 @@ For multi-step scripts, use the library instead of shelling out to the CLI. Same
 ```python
 from fulfil_cli import Workspace
 
-with Workspace("acme.fulfil.io") as ws:          # always explicit, never the default workspace
-    rows = ws["task"].find({"state": "open"}, fields="name,owner.name", order="due_date")  # all pages
-    ws["task"].create([{...}, {...}])                # batch, never loop
+# The workspace is always explicit, never the default one.
+with Workspace("acme.fulfil.io") as ws:
+    # find() follows pagination and returns every match.
+    rows = ws["task"].find({"state": "open"}, fields="name,owner.name", order="due_date")
+    # Batch creates in one call; never loop.
+    ws["task"].create([{...}, {...}])
     ws["task"].call("done", ids=[1, 2])
 ```
 

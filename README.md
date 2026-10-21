@@ -221,7 +221,7 @@ with Workspace("acme.fulfil.io") as ws:
     for product in ws["product"].iter(fields="code,name"):  # lazy, page by page
         ...
 
-    ws["sales_order"].get(42, fields="reference,state")      # one id -> dict, list -> list
+    ws["sales_order"].get(42, fields="reference,state")  # one id -> dict, list -> list
     ws["contact"].count({"active": True})
     ws["contact"].create([{"name": "Alice"}, {"name": "Bob"}])  # one call for many records
     ws["contact"].update([1, 2], {"comment": "Reviewed"})
