@@ -204,6 +204,43 @@ FULFIL_FORMAT=json fulfil sales_order list
 fulfil sales_order list --fields reference,state --format csv
 ```
 
+## Python Library
+
+The same models, filters and login are available from Python, for scripts that do more than one command can:
+
+```python
+from fulfil_cli import Workspace
+
+with Workspace("acme.fulfil.io") as ws:
+    # find() follows pagination and returns every match (or the first `limit`)
+    orders = ws["sales_order"].find(
+        {"state": "confirmed", "sale_date": {"gte": "2025-01-01"}},
+        fields=["reference", "party.name", "total_amount"],
+        order="sale_date:desc",
+    )
+    for product in ws["product"].iter(fields="code,name"):  # lazy, page by page
+        ...
+
+    ws["sales_order"].get(42, fields="reference,state")      # one id -> dict, list -> list
+    ws["contact"].count({"active": True})
+    ws["contact"].create([{"name": "Alice"}, {"name": "Bob"}])  # one call for many records
+    ws["contact"].update([1, 2], {"comment": "Reviewed"})
+    ws["sales_order"].call("confirm", ids=[1, 2, 3])
+    ws["sales_order"].describe()
+```
+
+- The workspace is always explicit. `Workspace` never falls back to the CLI's default workspace.
+- Credentials resolve as in the CLI: `token=` > `FULFIL_API_KEY` > the login stored by `fulfil auth login` for that workspace (OAuth tokens refresh automatically).
+- Errors raise the same exceptions the CLI maps to exit codes (`fulfil_cli.FulfilError` and its subclasses in `fulfil_cli.client.errors`).
+
+For a one-off script, declare the dependency inline and run it with `uv run script.py`:
+
+```python
+# /// script
+# dependencies = ["fulfil-cli>=0.5.0"]
+# ///
+```
+
 ## Configuration
 
 ```bash

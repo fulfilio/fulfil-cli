@@ -161,8 +161,7 @@ def whoami(
     """Show current user and workspace info."""
     app_ctx: AppContext = ctx.obj
     try:
-        client = app_ctx.get_client()
-        result = client.call("system.whoami")
+        result = app_ctx.get_workspace().whoami()
     except FulfilError as exc:
         handle_error(exc)
 
@@ -187,8 +186,7 @@ def _list_models(fmt: str, search: str | None = None) -> None:
     """Fetch and display all available models."""
     app_ctx: AppContext = click.get_current_context().obj
     try:
-        client = app_ctx.get_client()
-        result = client.call("system.list_models")
+        result = app_ctx.get_workspace().models()
     except FulfilError as exc:
         handle_error(exc)
 
