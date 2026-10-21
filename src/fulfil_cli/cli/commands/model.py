@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import difflib
 import sys
-from typing import IO, Any
+from typing import IO
 
 import click
 import typer
@@ -14,15 +14,9 @@ from fulfil_cli.cli.commands.common import handle_error, parse_json_arg
 from fulfil_cli.cli.state import AppContext, format_option
 from fulfil_cli.client.errors import EXIT_NOT_FOUND, EXIT_OK, EXIT_USAGE, FulfilError
 from fulfil_cli.output.formatter import output, output_model_describe
+from fulfil_cli.workspace import Model
 
 console = Console(stderr=True)
-
-
-def _parse_fields(value: str | None) -> list[str] | None:
-    """Parse comma-separated field names."""
-    if not value:
-        return None
-    return [f.strip() for f in value.split(",") if f.strip()]
 
 
 def _parse_ids(value: str) -> list[int]:
@@ -34,26 +28,11 @@ def _parse_ids(value: str) -> list[int]:
         raise typer.Exit(code=EXIT_USAGE) from None
 
 
-def _parse_order(value: str) -> dict[str, str]:
-    """Parse order string like 'sale_date:desc,name:asc' into {"sale_date": "DESC", "name": "ASC"}.
-
-    Each pair is field:direction where direction defaults to ASC if omitted.
-    """
-    result: dict[str, str] = {}
-    for part in value.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if ":" in part:
-            field, direction = part.split(":", 1)
-            result[field.strip()] = direction.strip().upper()
-        else:
-            result[part] = "ASC"
-    return result
-
-
 def create_model_group(model_name: str) -> click.Group:
     """Create a Click group for a model with all standard actions."""
+
+    def model(ctx: click.Context) -> Model:
+        return ctx.obj.get_workspace()[model_name]
 
     @click.group(name=model_name, help=f"Interact with {model_name} records.")
     @click.pass_context
@@ -118,20 +97,14 @@ def create_model_group(model_name: str) -> click.Group:
         """
         app_ctx: AppContext = ctx.obj
         fmt = app_ctx.get_effective_format(output_format)
-        params: dict[str, Any] = {"page_size": page_size}
-
-        if where:
-            params["where"] = parse_json_arg(where, "--where")
-        if order:
-            params["ordering"] = _parse_order(order)
-        if fields_str:
-            params["fields"] = _parse_fields(fields_str)
-        if cursor:
-            params["cursor"] = cursor
-
         try:
-            client = app_ctx.get_client()
-            result = client.call(f"model.{model_name}.find", **params)
+            result = model(ctx).page(
+                parse_json_arg(where, "--where") if where else None,
+                fields=fields_str,
+                order=order,
+                page_size=page_size,
+                cursor=cursor,
+            )
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 
@@ -183,37 +156,13 @@ def create_model_group(model_name: str) -> click.Group:
         """
         app_ctx: AppContext = ctx.obj
         parsed_ids = _parse_ids(ids)
-        fields = _parse_fields(fields_str)
 
         try:
-            client = app_ctx.get_client()
-            if fields:
-                result = client.call(
-                    f"model.{model_name}.find",
-                    where={"id": {"in": parsed_ids}},
-                    fields=fields,
-                    page_size=len(parsed_ids),
-                )
-            else:
-                result = client.call(f"model.{model_name}.serialize", parsed_ids)
+            result = model(ctx).get(
+                parsed_ids[0] if len(parsed_ids) == 1 else parsed_ids, fields=fields_str
+            )
         except FulfilError as exc:
             handle_error(exc, context=model_name)
-
-        if fields:
-            records = result["data"] if isinstance(result, dict) and "data" in result else result
-            by_id = {record["id"]: record for record in records}
-            missing = [i for i in parsed_ids if i not in by_id]
-            if missing:
-                missing_str = ", ".join(str(i) for i in missing)
-                console.print(
-                    f"[red]No {model_name} record(s) found for ID(s): {missing_str}[/red]"
-                )
-                raise typer.Exit(code=EXIT_NOT_FOUND)
-
-            result = [by_id[i] for i in parsed_ids]
-
-        if len(parsed_ids) == 1 and isinstance(result, list) and len(result) == 1:
-            result = result[0]
 
         output(result, fmt=app_ctx.get_effective_format(output_format), title=model_name)
 
@@ -234,12 +183,8 @@ def create_model_group(model_name: str) -> click.Group:
           fulfil contact create records.json
         """
         app_ctx: AppContext = ctx.obj
-        parsed = parse_json_arg(data.read(), "data")
-        vlist = parsed if isinstance(parsed, list) else [parsed]
-
         try:
-            client = app_ctx.get_client()
-            result = client.call(f"model.{model_name}.create", vlist=vlist)
+            result = model(ctx).create(parse_json_arg(data.read(), "data"))
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 
@@ -266,8 +211,7 @@ def create_model_group(model_name: str) -> click.Group:
         values = parse_json_arg(data.read(), "data")
 
         try:
-            client = app_ctx.get_client()
-            result = client.call(f"model.{model_name}.update", ids=parsed_ids, values=values)
+            result = model(ctx).update(parsed_ids, values)
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 
@@ -300,8 +244,7 @@ def create_model_group(model_name: str) -> click.Group:
                 raise typer.Exit(code=EXIT_OK)
 
         try:
-            client = app_ctx.get_client()
-            client.call(f"model.{model_name}.delete", ids=parsed_ids)
+            model(ctx).delete(parsed_ids)
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 
@@ -322,13 +265,8 @@ def create_model_group(model_name: str) -> click.Group:
     def count_cmd(ctx: click.Context, where: str | None, output_format: str | None) -> None:
         """Count records matching filters. Returns a single integer."""
         app_ctx: AppContext = ctx.obj
-        params: dict[str, Any] = {}
-        if where:
-            params["where"] = parse_json_arg(where, "--where")
-
         try:
-            client = app_ctx.get_client()
-            result = client.call(f"model.{model_name}.count", **params)
+            result = model(ctx).count(parse_json_arg(where, "--where") if where else None)
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 
@@ -370,17 +308,11 @@ def create_model_group(model_name: str) -> click.Group:
           fulfil sales_order call process --ids 42
         """
         app_ctx: AppContext = ctx.obj
-        params: dict[str, Any] = {}
-        if ids:
-            params["ids"] = _parse_ids(ids)
-        if data:
-            extra = parse_json_arg(data, "--data")
-            if isinstance(extra, dict):
-                params.update(extra)
+        extra = parse_json_arg(data, "--data") if data else {}
+        params = extra if isinstance(extra, dict) else {}
 
         try:
-            client = app_ctx.get_client()
-            result = client.call(f"model.{model_name}.{method_name}", **params)
+            result = model(ctx).call(method_name, ids=_parse_ids(ids) if ids else None, **params)
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 
@@ -402,8 +334,7 @@ def create_model_group(model_name: str) -> click.Group:
         """
         app_ctx: AppContext = ctx.obj
         try:
-            client = app_ctx.get_client()
-            result = client.call("system.describe_model", model=model_name)
+            result = model(ctx).describe()
         except FulfilError as exc:
             handle_error(exc, context=model_name)
 

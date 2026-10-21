@@ -104,6 +104,19 @@ fulfil reports --format json
 fulfil reports price_list_report describe --format json
 ```
 
+### Python
+
+For multi-step scripts, use the library instead of shelling out to the CLI. Same models, `where` syntax, dotted fields and credentials:
+
+```python
+from fulfil_cli import Workspace
+
+with Workspace("acme.fulfil.io") as ws:          # always explicit, never the default workspace
+    rows = ws["task"].find({"state": "open"}, fields="name,owner.name", order="due_date")  # all pages
+    ws["task"].create([{...}, {...}])                # batch, never loop
+    ws["task"].call("done", ids=[1, 2])
+```
+
 ### Other Commands
 
 ```bash

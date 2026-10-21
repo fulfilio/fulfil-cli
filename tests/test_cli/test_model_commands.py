@@ -9,7 +9,8 @@ import pytest
 from typer.testing import CliRunner
 
 from fulfil_cli.cli.app import app
-from fulfil_cli.cli.commands.model import _parse_fields, _parse_ids, _parse_order
+from fulfil_cli.cli.commands.model import _parse_ids
+from fulfil_cli.workspace import parse_fields, parse_order
 
 runner = CliRunner()
 
@@ -21,16 +22,16 @@ runner = CliRunner()
 
 class TestParseFields:
     def test_comma_separated(self):
-        assert _parse_fields("name,state, x") == ["name", "state", "x"]
+        assert parse_fields("name,state, x") == ["name", "state", "x"]
 
     def test_none_returns_none(self):
-        assert _parse_fields(None) is None
+        assert parse_fields(None) is None
 
     def test_empty_string_returns_none(self):
-        assert _parse_fields("") is None
+        assert parse_fields("") is None
 
     def test_strips_whitespace(self):
-        assert _parse_fields(" foo , bar ") == ["foo", "bar"]
+        assert parse_fields(" foo , bar ") == ["foo", "bar"]
 
 
 class TestParseIds:
@@ -51,13 +52,13 @@ class TestParseIds:
 
 class TestParseOrder:
     def test_with_direction(self):
-        assert _parse_order("date:desc,name") == {"date": "DESC", "name": "ASC"}
+        assert parse_order("date:desc,name") == {"date": "DESC", "name": "ASC"}
 
     def test_default_asc(self):
-        assert _parse_order("name") == {"name": "ASC"}
+        assert parse_order("name") == {"name": "ASC"}
 
     def test_multiple_directions(self):
-        assert _parse_order("a:asc,b:desc") == {"a": "ASC", "b": "DESC"}
+        assert parse_order("a:asc,b:desc") == {"a": "ASC", "b": "DESC"}
 
 
 # ---------------------------------------------------------------------------
