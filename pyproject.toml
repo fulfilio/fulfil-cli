@@ -4,10 +4,10 @@ build-backend = "uv_build"
 
 [project]
 name = "fulfil-cli"
-version = "0.4.0"
+version = "0.5.0"
 description = "The Fulfil CLI — primary interface for humans and AI agents"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Fulfil.IO", email = "hello@fulfil.io" }]
 keywords = ["fulfil", "cli", "erp", "ecommerce"]
@@ -17,7 +17,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -30,10 +29,11 @@ dependencies = [
     "typer>=0.12.0,<0.26",
     "rich>=13.0.0",
     "httpx>=0.27.0",
+    # Floor on the CA bundle httpx uses; raise it when certifi ships a security update.
+    "certifi>=2026.10.19",
     "orjson>=3.10.0",
     "keyring>=25.0.0",
     "platformdirs>=4.0.0",
-    "tomli>=2.0.0; python_version < '3.11'",
     "tomli-w>=1.0.0",
 ]
 
@@ -68,7 +68,7 @@ addopts = [
 xfail_strict = true
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 
 [tool.ruff.lint]

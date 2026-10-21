@@ -47,5 +47,5 @@ The CLI is built with **Typer** (on top of Click) and communicates with the Fulf
 
 - Ruff with rules: E, F, I, N, W, UP (pyupgrade)
 - Line length: 100
-- Target: Python 3.10+
+- Target: Python 3.11+
 - Entry point: `fulfil = "fulfil_cli.cli:main"`

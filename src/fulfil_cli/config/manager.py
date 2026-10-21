@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
 import tomli_w
 
 from fulfil_cli.config.paths import config_file
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 class ConfigManager:
