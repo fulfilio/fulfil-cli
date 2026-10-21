@@ -126,15 +126,15 @@ class Model:
         """
         id_list = _ids(ids)
         if not (field_list := parse_fields(fields)):
-            records = self._rpc("serialize", id_list)
+            found = self._rpc("serialize", id_list) or []
         else:
             found = self.find({"id": {"in": id_list}}, fields=field_list, limit=len(id_list))
-            by_id = {record["id"]: record for record in found}
-            if missing := [str(i) for i in id_list if i not in by_id]:
-                raise NotFoundError(
-                    message=f"No {self.name} record(s) found for ID(s): {', '.join(missing)}"
-                )
-            records = [by_id[i] for i in id_list]
+        by_id = {record["id"]: record for record in found}
+        if missing := [str(i) for i in id_list if i not in by_id]:
+            raise NotFoundError(
+                message=f"No {self.name} record(s) found for ID(s): {', '.join(missing)}"
+            )
+        records = [by_id[i] for i in id_list]
         return records[0] if isinstance(ids, int) else records
 
     def count(self, where: dict | None = None) -> int:
