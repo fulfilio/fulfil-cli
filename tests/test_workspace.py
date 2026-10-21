@@ -111,6 +111,16 @@ def test_get_without_fields_serializes(ws, httpx_mock):
     }
 
 
+def test_get_without_fields_missing(ws, httpx_mock):
+    respond(httpx_mock, [])
+    with pytest.raises(NotFoundError, match=r"ID\(s\): 8"):
+        ws["task"].get(8)
+
+    respond(httpx_mock, [{"id": 7, "rec_name": "G"}])
+    with pytest.raises(NotFoundError, match=r"ID\(s\): 8$"):
+        ws["task"].get([7, 8])
+
+
 def test_writes(ws, httpx_mock):
     for result in ([11, 12], None, None, {"ok": True}, 4):
         respond(httpx_mock, result)
