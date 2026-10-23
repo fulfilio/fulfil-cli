@@ -284,6 +284,13 @@ def create_model_group(model_name: str) -> click.Group:
         help="Comma-separated record IDs to pass to the method, e.g. 1,2,3",
     )
     @click.option(
+        "--id",
+        "record_id",
+        type=int,
+        default=None,
+        help="Record ID for methods that act on one record, e.g. get_attachments",
+    )
+    @click.option(
         "--data",
         default=None,
         help=("Extra method arguments as a JSON object. Example: '{\"warehouse\": 1}'"),
@@ -294,6 +301,7 @@ def create_model_group(model_name: str) -> click.Group:
         ctx: click.Context,
         method_name: str,
         ids: str | None,
+        record_id: int | None,
         data: str | None,
         output_format: str | None,
     ) -> None:
@@ -301,15 +309,22 @@ def create_model_group(model_name: str) -> click.Group:
 
         METHOD_NAME is the method suffix (e.g. 'confirm', 'process', 'cancel').
         The full RPC method will be model.<model_name>.<METHOD_NAME>.
+        --ids is sent as 'id' or 'ids', whichever the method takes.
 
         \b
         Examples:
           fulfil sales_order call confirm --ids 1,2,3
           fulfil sales_order call process --ids 42
+          fulfil sales_order call get_attachments --id 42
         """
         app_ctx: AppContext = ctx.obj
+        if ids and record_id is not None:
+            console.print("[red]Use --id or --ids, not both.[/red]")
+            raise typer.Exit(code=EXIT_USAGE)
         extra = parse_json_arg(data, "--data") if data else {}
         params = extra if isinstance(extra, dict) else {}
+        if record_id is not None:
+            params["id"] = record_id
 
         try:
             result = model(ctx).call(method_name, ids=_parse_ids(ids) if ids else None, **params)

@@ -121,8 +121,18 @@ def test_get_without_fields_missing(ws, httpx_mock):
         ws["task"].get([7, 8])
 
 
+def describe(*endpoints):
+    """A describe_model result whose endpoints take the given body fields."""
+    return {
+        "endpoints": [
+            {"rpc_name": name, "body_schemas": {"Body": [{"name": f} for f in fields]}}
+            for name, fields in endpoints
+        ]
+    }
+
+
 def test_writes(ws, httpx_mock):
-    for result in ([11, 12], None, None, {"ok": True}, 4):
+    for result in ([11, 12], None, None, describe(("done", ["ids", "note"])), {"ok": True}, 4):
         respond(httpx_mock, result)
 
     assert ws["task"].create([{"name": "A"}, {"name": "B"}]) == [11, 12]
@@ -136,9 +146,51 @@ def test_writes(ws, httpx_mock):
         ("model.task.create", {"vlist": [{"name": "A"}, {"name": "B"}]}),
         ("model.task.update", {"ids": [11, 12], "values": {"owner": 5}}),
         ("model.task.delete", {"ids": [12]}),
+        ("system.describe_model", {"model": "task"}),
         ("model.task.done", {"note": "x", "ids": [11]}),
         ("model.task.count", {"where": {"state": "done"}}),
     ]
+
+
+def test_call_sends_id_or_ids_as_the_endpoint_takes(ws, httpx_mock):
+    respond(
+        httpx_mock,
+        describe(
+            ("confirm", ["ids"]),
+            ("get_attachments", ["id"]),
+            ("add_comment", ["id", "message"]),
+        ),
+    )
+    for _ in range(4):
+        respond(httpx_mock, True)
+
+    ws["sale"].call("confirm", ids=6)
+    ws["sale"].call("get_attachments", ids=[6])
+    ws["sale"].call("add_comment", ids=6, message="hi")
+    ws["sale"].call("unlisted", ids=[6, 7])
+
+    calls = [(r["method"], r["params"]) for r in sent(httpx_mock)]
+    assert calls == [
+        ("system.describe_model", {"model": "sale"}),
+        ("model.sale.confirm", {"ids": [6]}),
+        ("model.sale.get_attachments", {"id": 6}),
+        ("model.sale.add_comment", {"message": "hi", "id": 6}),
+        ("model.sale.unlisted", {"ids": [6, 7]}),
+    ]
+
+
+def test_call_single_record_endpoint_rejects_many_ids(ws, httpx_mock):
+    respond(httpx_mock, describe(("get_attachments", ["id"])))
+
+    with pytest.raises(ValidationError, match="acts on one record; got 2 ids"):
+        ws["sale"].call("get_attachments", ids=[6, 7])
+    assert len(httpx_mock.get_requests()) == 1
+
+
+def test_call_without_ids_skips_describe(ws, httpx_mock):
+    respond(httpx_mock, True)
+    ws["sale"].call("get_attachments", id=6)
+    assert sent(httpx_mock)[0]["params"] == {"id": 6}
 
 
 def test_create_single_record_is_batched(ws, httpx_mock):

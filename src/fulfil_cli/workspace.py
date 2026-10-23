@@ -19,7 +19,7 @@ from typing import Any
 
 from fulfil_cli.auth.api_key import normalize_workspace
 from fulfil_cli.client.connect import connect
-from fulfil_cli.client.errors import NotFoundError
+from fulfil_cli.client.errors import NotFoundError, ValidationError
 from fulfil_cli.client.http import FulfilClient
 
 MAX_PAGE_SIZE = 500
@@ -58,6 +58,7 @@ class Model:
     def __init__(self, client: FulfilClient, name: str) -> None:
         self.client = client
         self.name = name
+        self._endpoints: dict[str, dict] | None = None
 
     def __repr__(self) -> str:
         return f"<Model {self.name} @ {self.client.workspace}>"
@@ -153,10 +154,37 @@ class Model:
         return self._rpc("delete", ids=_ids(ids))
 
     def call(self, method: str, ids: Ids | None = None, **params: Any) -> Any:
-        """Call an endpoint, e.g. ``ws["sales_order"].call("confirm", ids=[1, 2])``."""
+        """Call an endpoint, e.g. ``ws["sales_order"].call("confirm", ids=[1, 2])``.
+
+        ``ids`` goes out as whatever the endpoint takes: ``ids`` for endpoints that act on
+        many records, ``id`` for ones that act on one (``get_attachments``). Only one id
+        can go to the latter. Passing ``id=6`` directly skips the lookup.
+        """
         if ids is not None:
-            params["ids"] = _ids(ids)
+            id_list = _ids(ids)
+            if self._id_key(method) == "id":
+                if len(id_list) != 1:
+                    raise ValidationError(
+                        message=f"{self.name}.{method} acts on one record; got {len(id_list)} ids.",
+                        hint="Call it once per record.",
+                    )
+                params["id"] = id_list[0]
+            else:
+                params["ids"] = id_list
         return self._rpc(method, **params)
+
+    def _id_key(self, method: str) -> str:
+        """'id' if the endpoint's request body takes a single record id, else 'ids'."""
+        if self._endpoints is None:
+            self._endpoints = {
+                ep.get("rpc_name") or ep.get("name"): ep
+                for ep in self.describe().get("endpoints", [])
+            }
+        # The first schema is the request body itself; the rest are models it references.
+        schemas = (self._endpoints.get(method) or {}).get("body_schemas") or {}
+        body = next(iter(schemas.values()), [])
+        names = {f.get("name") for f in body}
+        return "id" if "id" in names and "ids" not in names else "ids"
 
     def describe(self) -> dict:
         """Fields, types, allowed values and endpoints of the model."""
@@ -183,12 +211,15 @@ class Workspace:
         self.client = connect(
             self.name, token=token, base_url=base_url, timeout=timeout, debug=debug
         )
+        self._models: dict[str, Model] = {}
 
     def __repr__(self) -> str:
         return f"<Workspace {self.name}>"
 
     def __getitem__(self, name: str) -> Model:
-        return Model(self.client, name)
+        if name not in self._models:
+            self._models[name] = Model(self.client, name)
+        return self._models[name]
 
     def whoami(self) -> dict:
         """The user these credentials act as, with their scopes."""

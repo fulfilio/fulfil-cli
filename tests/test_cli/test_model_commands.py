@@ -301,16 +301,62 @@ class TestCountCommand:
         assert body["params"]["where"] == {"state": "draft"}
 
 
+def _endpoints(**endpoints):
+    """A describe_model result whose endpoints take the given body fields."""
+    return {
+        "endpoints": [
+            {"rpc_name": name, "body_schemas": {"Body": [{"name": f} for f in fields]}}
+            for name, fields in endpoints.items()
+        ]
+    }
+
+
 class TestCallCommand:
     def test_with_ids(self, httpx_mock, cli_env, jsonrpc_success):
+        httpx_mock.add_response(json=jsonrpc_success(_endpoints(confirm=["ids"])))
         httpx_mock.add_response(json=jsonrpc_success(True))
 
         result = runner.invoke(app, ["sale_order", "call", "confirm", "--ids", "1,2,3"])
         assert result.exit_code == 0
 
-        body = json.loads(httpx_mock.get_request().content)
+        body = json.loads(httpx_mock.get_requests()[-1].content)
         assert body["method"] == "model.sale_order.confirm"
         assert body["params"]["ids"] == [1, 2, 3]
+
+    def test_ids_to_single_record_endpoint(self, httpx_mock, cli_env, jsonrpc_success):
+        httpx_mock.add_response(json=jsonrpc_success(_endpoints(get_attachments=["id"])))
+        httpx_mock.add_response(json=jsonrpc_success([]))
+
+        result = runner.invoke(app, ["sale_order", "call", "get_attachments", "--ids", "6"])
+        assert result.exit_code == 0
+
+        body = json.loads(httpx_mock.get_requests()[-1].content)
+        assert body["method"] == "model.sale_order.get_attachments"
+        assert body["params"] == {"id": 6}
+
+    def test_many_ids_to_single_record_endpoint(self, httpx_mock, cli_env, jsonrpc_success):
+        httpx_mock.add_response(json=jsonrpc_success(_endpoints(get_attachments=["id"])))
+
+        result = runner.invoke(app, ["sale_order", "call", "get_attachments", "--ids", "6,7"])
+        assert result.exit_code == 7
+        assert "acts on one record" in result.output
+        assert len(httpx_mock.get_requests()) == 1
+
+    def test_with_id(self, httpx_mock, cli_env, jsonrpc_success):
+        httpx_mock.add_response(json=jsonrpc_success(True))
+
+        result = runner.invoke(
+            app,
+            ["sale_order", "call", "add_comment", "--id", "6", "--data", '{"message": "hi"}'],
+        )
+        assert result.exit_code == 0
+
+        body = json.loads(httpx_mock.get_request().content)
+        assert body["params"] == {"message": "hi", "id": 6}
+
+    def test_id_and_ids_conflict(self, cli_env):
+        result = runner.invoke(app, ["sale_order", "call", "confirm", "--id", "1", "--ids", "2"])
+        assert result.exit_code == 2
 
     def test_with_data(self, httpx_mock, cli_env, jsonrpc_success):
         httpx_mock.add_response(json=jsonrpc_success({"ok": True}))
@@ -326,6 +372,7 @@ class TestCallCommand:
         assert body["params"]["warehouse"] == 1
 
     def test_with_ids_and_data(self, httpx_mock, cli_env, jsonrpc_success):
+        httpx_mock.add_response(json=jsonrpc_success(_endpoints(process=["ids", "force"])))
         httpx_mock.add_response(json=jsonrpc_success(True))
 
         result = runner.invoke(
@@ -342,7 +389,7 @@ class TestCallCommand:
         )
         assert result.exit_code == 0
 
-        body = json.loads(httpx_mock.get_request().content)
+        body = json.loads(httpx_mock.get_requests()[-1].content)
         assert body["params"]["ids"] == [42]
         assert body["params"]["force"] is True
 
