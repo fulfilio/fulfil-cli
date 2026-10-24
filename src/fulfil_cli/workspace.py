@@ -22,7 +22,13 @@ import httpx
 
 from fulfil_cli.auth.api_key import normalize_workspace
 from fulfil_cli.client.connect import connect
-from fulfil_cli.client.errors import NetworkError, NotFoundError, ServerError, ValidationError
+from fulfil_cli.client.errors import (
+    ApplicationError,
+    NetworkError,
+    NotFoundError,
+    ServerError,
+    ValidationError,
+)
 from fulfil_cli.client.http import FulfilClient
 
 MAX_PAGE_SIZE = 500
@@ -67,7 +73,7 @@ def _storage(method: str, url: str, **kwargs: Any) -> httpx.Response:
         raise NetworkError(message=f"Could not reach storage: {exc}") from exc
     if response.status_code >= 400:
         detail = response.text.strip()[:300]
-        error = ValidationError if response.status_code < 500 else ServerError
+        error = ApplicationError if response.status_code < 500 else ServerError
         raise error(message=f"Storage rejected the request (HTTP {response.status_code}): {detail}")
     return response
 
@@ -224,7 +230,7 @@ class Model:
         else:
             path = to
         if path.exists():
-            raise ValidationError(message=f"{path} already exists")
+            raise ApplicationError(message=f"{path} already exists")
         path.write_bytes(_storage("GET", attachment["url"]).content)
         return path
 
@@ -234,7 +240,7 @@ class Model:
         filename = filename or path.name
         upload = self._rpc("start_attachment_upload", id=id, filename=filename)
         if (size := path.stat().st_size) > upload["max_bytes"]:
-            raise ValidationError(
+            raise ApplicationError(
                 message=f"{path} is {size} bytes; {self.name} accepts at most "
                 f"{upload['max_bytes']} bytes per file"
             )
