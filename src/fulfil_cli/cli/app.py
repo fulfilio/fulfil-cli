@@ -16,7 +16,7 @@ import typer.core
 from rich.console import Console
 
 from fulfil_cli import __version__
-from fulfil_cli.cli.commands import auth, config
+from fulfil_cli.cli.commands import auth, config, skills
 from fulfil_cli.cli.commands.api import api_cmd
 from fulfil_cli.cli.commands.common import handle_error
 from fulfil_cli.cli.commands.completion import completion_install
@@ -94,6 +94,7 @@ app = typer.Typer(
 # Static command groups
 app.add_typer(auth.app, name="auth")
 app.add_typer(config.app, name="config")
+app.add_typer(skills.app, name="skills")
 
 
 @app.callback()
