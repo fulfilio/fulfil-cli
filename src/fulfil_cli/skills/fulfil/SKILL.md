@@ -81,6 +81,16 @@ echo '{"<field>": {"update": [{"ids": [881], "values": {"quantity": 3}}]}}' | fu
   would try to delete the users. To take a record off a list, use `remove`.
 - One object can hold several actions: `{"add": [...], "remove": [...]}`.
 
+## Files
+
+- `fulfil <model> attachments <id>` lists a record's files. Add `--download <dir>` to save
+  them. Download links expire within an hour, so download right away and never keep a link.
+- `fulfil <model> attach <id> <file> [<file>...]` uploads files and attaches them. Use it
+  instead of calling `start_attachment_upload` and `finish_attachment_upload` yourself.
+  Files are limited to 25 MB unless the model sets its own limit, and some types, such as
+  `.exe`, are refused.
+- `fulfil <model> detach <id> <attachment_id> --yes` deletes a file for good. Confirm first.
+
 ## Errors
 
 Exit codes: 2 bad arguments, 3 config, 4 auth, 5 not found, 6 forbidden, 7 validation,
