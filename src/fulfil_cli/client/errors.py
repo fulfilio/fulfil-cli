@@ -84,6 +84,11 @@ class ValidationError(FulfilError):
 
 
 @dataclass
+class ApplicationError(ValidationError):
+    """The request was well-formed but refused: a business rule, a limit or a conflict."""
+
+
+@dataclass
 class RateLimitError(FulfilError):
     """Rate limited."""
 
@@ -115,6 +120,7 @@ JSONRPC_ERROR_MAP: dict[int, type[FulfilError]] = {
     -32001: ForbiddenError,  # Permission denied
     -32002: NotFoundError,  # Not found
     -32003: RateLimitError,  # Rate limited
+    -32010: ApplicationError,  # A business rule refused the request
 }
 
 
