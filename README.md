@@ -291,6 +291,7 @@ The CLI is designed for programmatic use:
 - **Structured exit codes** for error handling
 - **Errors on stderr**, data on stdout — safe to parse stdout directly
 - **Environment variable auth** — no interactive prompts: `FULFIL_API_KEY` + `FULFIL_WORKSPACE`
+- **Agent skill** — `fulfil skills install` adds the bundled Fulfil skill to `.agents/skills` (Codex and others) and `.claude/skills` (Claude Code); `--global` installs it for your user
 
 See [AGENTS.md](AGENTS.md) for the full agent guide.
 
