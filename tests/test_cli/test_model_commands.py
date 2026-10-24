@@ -414,6 +414,90 @@ class TestCallCommand:
         assert "Cannot read file" in (result.stdout + result.stderr)
 
 
+UPLOAD_URL = "https://storage.example.com/temp"
+FILE_URL = "https://storage.example.com/files/po.pdf?sig=1"
+
+
+class TestAttachmentCommands:
+    def test_attachments_table_hides_urls(self, httpx_mock, cli_env, jsonrpc_success):
+        attachment = {"id": 9, "name": "po.pdf", "mimetype": "application/pdf", "url": FILE_URL}
+        httpx_mock.add_response(json=jsonrpc_success([attachment]))
+
+        result = runner.invoke(app, ["sale_order", "attachments", "6", "--format", "table"])
+        assert result.exit_code == 0
+        assert "po.pdf" in result.output
+        assert "storage.example.com" not in result.output
+
+        body = json.loads(httpx_mock.get_request().content)
+        assert body["method"] == "model.sale_order.get_attachments"
+        assert body["params"] == {"id": 6}
+
+    def test_attachments_download(self, httpx_mock, cli_env, jsonrpc_success, tmp_path):
+        attachment = {"id": 9, "name": "po.pdf", "url": FILE_URL}
+        httpx_mock.add_response(json=jsonrpc_success([attachment]))
+        httpx_mock.add_response(url=FILE_URL, content=b"%PDF")
+
+        out = tmp_path / "out"
+        result = runner.invoke(
+            app, ["sale_order", "attachments", "6", "--download", str(out), "--format", "json"]
+        )
+        assert result.exit_code == 0
+        assert (out / "po.pdf").read_bytes() == b"%PDF"
+        assert json.loads(result.stdout)[0]["path"] == str(out / "po.pdf")
+
+    def test_attach_files(self, httpx_mock, cli_env, jsonrpc_success, tmp_path):
+        files = []
+        for name in ("a.pdf", "b.png"):
+            (tmp_path / name).write_bytes(b"x")
+            files.append(str(tmp_path / name))
+            upload = {"method": "POST", "url": UPLOAD_URL, "fields": {"key": name}}
+            started = {"upload_token": f"tok-{name}", "upload": upload, "max_bytes": 100}
+            httpx_mock.add_response(json=jsonrpc_success(started))
+            httpx_mock.add_response(url=UPLOAD_URL, method="POST", status_code=204)
+            httpx_mock.add_response(json=jsonrpc_success({"id": len(files), "name": name}))
+
+        result = runner.invoke(app, ["sale_order", "attach", "6", *files, "--format", "json"])
+        assert result.exit_code == 0, result.output
+        assert [a["name"] for a in json.loads(result.stdout)] == ["a.pdf", "b.png"]
+
+        rpc = [json.loads(r.content) for r in httpx_mock.get_requests() if r.url != UPLOAD_URL]
+        assert [r["method"].rsplit(".", 1)[1] for r in rpc] == [
+            "start_attachment_upload",
+            "finish_attachment_upload",
+        ] * 2
+        assert rpc[1]["params"] == {"id": 6, "upload_token": "tok-a.pdf"}
+
+    def test_attach_missing_file(self, cli_env, tmp_path):
+        result = runner.invoke(app, ["sale_order", "attach", "6", str(tmp_path / "nope.pdf")])
+        assert result.exit_code == 2
+
+    def test_refused_by_rule_has_no_describe_hint(self, httpx_mock, cli_env, tmp_path):
+        (tmp_path / "tool.exe").write_bytes(b"x")
+        error = {"code": -32010, "message": "File type not allowed"}
+        httpx_mock.add_response(json={"jsonrpc": "2.0", "error": error, "id": 1})
+
+        result = runner.invoke(
+            app, ["sale_order", "attach", "6", str(tmp_path / "tool.exe"), "--format", "json"]
+        )
+        assert result.exit_code == 7
+        err = json.loads(result.stderr)
+        assert err["error"] == "ApplicationError"
+        assert "hint" not in err
+
+    def test_detach_needs_yes_without_tty(self, cli_env):
+        result = runner.invoke(app, ["sale_order", "detach", "6", "9"])
+        assert result.exit_code == 2
+
+    def test_detach(self, httpx_mock, cli_env, jsonrpc_success):
+        httpx_mock.add_response(json=jsonrpc_success(None))
+        httpx_mock.add_response(json=jsonrpc_success(None))
+
+        result = runner.invoke(app, ["sale_order", "detach", "6", "9", "10", "--yes"])
+        assert result.exit_code == 0
+        params = [json.loads(r.content)["params"] for r in httpx_mock.get_requests()]
+        assert params == [{"id": 6, "attachment_id": 9}, {"id": 6, "attachment_id": 10}]
+
+
 class TestDescribeCommand:
     def test_full_describe(self, httpx_mock, cli_env, jsonrpc_success):
         model_data = {

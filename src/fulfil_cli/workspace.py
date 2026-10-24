@@ -15,14 +15,25 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from itertools import islice
+from pathlib import Path
 from typing import Any
+
+import httpx
 
 from fulfil_cli.auth.api_key import normalize_workspace
 from fulfil_cli.client.connect import connect
-from fulfil_cli.client.errors import NotFoundError, ValidationError
+from fulfil_cli.client.errors import (
+    ApplicationError,
+    NetworkError,
+    NotFoundError,
+    ServerError,
+    ValidationError,
+)
 from fulfil_cli.client.http import FulfilClient
 
 MAX_PAGE_SIZE = 500
+# Uploads and downloads go straight to storage and can be large.
+STORAGE_TIMEOUT = 300.0
 
 Fields = str | Iterable[str] | None
 Ids = int | Iterable[int]
@@ -50,6 +61,21 @@ def parse_fields(fields: Fields) -> list[str] | None:
 
 def _ids(ids: Ids) -> list[int]:
     return [ids] if isinstance(ids, int) else list(ids)
+
+
+def _storage(method: str, url: str, **kwargs: Any) -> httpx.Response:
+    """A request to a pre-signed storage URL. It carries its own authorization, so no API key."""
+    try:
+        response = httpx.request(method, url, timeout=STORAGE_TIMEOUT, **kwargs)
+    except httpx.TimeoutException as exc:
+        raise NetworkError(message="Storage request timed out") from exc
+    except httpx.HTTPError as exc:
+        raise NetworkError(message=f"Could not reach storage: {exc}") from exc
+    if response.status_code >= 400:
+        detail = response.text.strip()[:300]
+        error = ApplicationError if response.status_code < 500 else ServerError
+        raise error(message=f"Storage rejected the request (HTTP {response.status_code}): {detail}")
+    return response
 
 
 class Model:
@@ -185,6 +211,48 @@ class Model:
         body = next(iter(schemas.values()), [])
         names = {f.get("name") for f in body}
         return "id" if "id" in names and "ids" not in names else "ids"
+
+    def attachments(self, id: int) -> list[dict]:
+        """Files attached to a record, newest first. Each ``url`` works for about an hour."""
+        return self._rpc("get_attachments", id=id)
+
+    def download(self, attachment: dict, to: str | Path = ".") -> Path:
+        """Save an attachment from ``attachments()`` into a directory, or to a file path.
+
+        Never overwrites: a name already taken falls back to ``<attachment id>-<name>``.
+        """
+        to = Path(to)
+        if to.is_dir():
+            name = Path(attachment["name"]).name
+            path = to / name
+            if path.exists():
+                path = to / f"{attachment['id']}-{name}"
+        else:
+            path = to
+        if path.exists():
+            raise ApplicationError(message=f"{path} already exists")
+        path.write_bytes(_storage("GET", attachment["url"]).content)
+        return path
+
+    def attach(self, id: int, path: str | Path, *, filename: str | None = None) -> dict:
+        """Upload a file and attach it to a record. Returns the new attachment."""
+        path = Path(path)
+        filename = filename or path.name
+        upload = self._rpc("start_attachment_upload", id=id, filename=filename)
+        if (size := path.stat().st_size) > upload["max_bytes"]:
+            raise ApplicationError(
+                message=f"{path} is {size} bytes; {self.name} accepts at most "
+                f"{upload['max_bytes']} bytes per file"
+            )
+        form = upload["upload"]
+        with path.open("rb") as file:
+            # httpx sends the fields before the file, which storage requires.
+            _storage(form["method"], form["url"], data=form["fields"], files={"file": file})
+        return self._rpc("finish_attachment_upload", id=id, upload_token=upload["upload_token"])
+
+    def detach(self, id: int, attachment_id: int) -> None:
+        """Delete an attachment from a record, and the stored file with it."""
+        self._rpc("delete_attachment", id=id, attachment_id=attachment_id)
 
     def describe(self) -> dict:
         """Fields, types, allowed values and endpoints of the model."""

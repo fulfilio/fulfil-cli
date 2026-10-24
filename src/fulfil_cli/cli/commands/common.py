@@ -12,10 +12,20 @@ import typer
 from rich.console import Console
 
 from fulfil_cli.cli.state import AppContext
-from fulfil_cli.client.errors import EXIT_VALIDATION, FulfilError, ValidationError
+from fulfil_cli.client.errors import (
+    EXIT_VALIDATION,
+    ApplicationError,
+    FulfilError,
+    ValidationError,
+)
 from fulfil_cli.output.json_output import print_json
 
 console = Console(stderr=True)
+
+
+def _wants_describe_hint(exc: FulfilError) -> bool:
+    """Bad fields or arguments, where describe helps; not a rule refusing a valid request."""
+    return isinstance(exc, ValidationError) and not isinstance(exc, ApplicationError)
 
 
 def handle_error(exc: FulfilError, *, context: str | None = None) -> NoReturn:
@@ -32,7 +42,7 @@ def handle_error(exc: FulfilError, *, context: str | None = None) -> NoReturn:
         err = exc.to_dict()
         if context:
             err["context"] = context
-        if not exc.hint and context and isinstance(exc, ValidationError):
+        if not exc.hint and context and _wants_describe_hint(exc):
             err["hint"] = f"Run 'fulfil {context} describe' to see valid field names."
         print_json(err, file=sys.stderr)
         raise typer.Exit(code=exc.exit_code)
@@ -41,7 +51,7 @@ def handle_error(exc: FulfilError, *, context: str | None = None) -> NoReturn:
     console.print(f"[red]Error ({label}): {exc}[/red]")
     if exc.hint:
         console.print(f"[dim]Hint: {exc.hint}[/dim]")
-    elif app_ctx and not app_ctx.quiet and context and isinstance(exc, ValidationError):
+    elif app_ctx and not app_ctx.quiet and context and _wants_describe_hint(exc):
         console.print(f"[dim]Hint: Run 'fulfil {context} describe' to see valid field names.[/dim]")
     raise typer.Exit(code=exc.exit_code)
 

@@ -1,9 +1,10 @@
-"""Dynamic model subcommand actions: list/get/create/update/delete/count/call/fields."""
+"""Dynamic model subcommand actions: list/get/create/update/delete/count/call/attachments/fields."""
 
 from __future__ import annotations
 
 import difflib
 import sys
+from pathlib import Path
 from typing import IO
 
 import click
@@ -335,6 +336,115 @@ def create_model_group(model_name: str) -> click.Group:
             handle_error(exc, context=model_name)
 
         output(result, fmt=app_ctx.get_effective_format(output_format))
+
+    @model_group.command("attachments")
+    @click.argument("record_id", metavar="ID", type=int)
+    @click.option(
+        "--download",
+        "download_dir",
+        type=click.Path(file_okay=False, path_type=Path),
+        default=None,
+        help="Save every file into this directory",
+    )
+    @format_option
+    @click.pass_context
+    def attachments_cmd(
+        ctx: click.Context, record_id: int, download_dir: Path | None, output_format: str | None
+    ) -> None:
+        """List the files attached to a record, or download them.
+
+        \b
+        Examples:
+          fulfil sales_order attachments 42
+          fulfil sales_order attachments 42 --download ./files
+        """
+        app_ctx: AppContext = ctx.obj
+        try:
+            attachments = model(ctx).attachments(record_id)
+            if download_dir:
+                download_dir.mkdir(parents=True, exist_ok=True)
+                for attachment in attachments:
+                    attachment["path"] = str(model(ctx).download(attachment, download_dir))
+                    if not app_ctx.quiet:
+                        console.print(f"[dim]Saved {attachment['path']}[/dim]", soft_wrap=True)
+        except FulfilError as exc:
+            handle_error(exc, context=model_name)
+
+        fmt = app_ctx.get_effective_format(output_format)
+        if fmt == "table":
+            # Download URLs are long and expire within the hour; leave them to JSON output.
+            columns = ("id", "name", "mimetype", "created_at", "created_by.name", "path")
+            attachments = [{k: a[k] for k in columns if k in a} for a in attachments]
+        output(attachments, fmt=fmt, title=f"{model_name} {record_id} attachments")
+
+    @model_group.command("attach")
+    @click.argument("record_id", metavar="ID", type=int)
+    @click.argument(
+        "files",
+        nargs=-1,
+        required=True,
+        type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    )
+    @format_option
+    @click.pass_context
+    def attach_cmd(
+        ctx: click.Context, record_id: int, files: tuple[Path, ...], output_format: str | None
+    ) -> None:
+        """Upload files and attach them to a record.
+
+        \b
+        Examples:
+          fulfil sales_order attach 42 po.pdf
+          fulfil sales_order attach 42 label.png packing-slip.pdf
+        """
+        app_ctx: AppContext = ctx.obj
+        attached = []
+        try:
+            for path in files:
+                attached.append(model(ctx).attach(record_id, path))
+                if not app_ctx.quiet:
+                    console.print(f"[dim]Attached {path.name}[/dim]")
+        except FulfilError as exc:
+            handle_error(exc, context=model_name)
+
+        output(attached, fmt=app_ctx.get_effective_format(output_format), title=model_name)
+
+    @model_group.command("detach")
+    @click.argument("record_id", metavar="ID", type=int)
+    @click.argument("attachment_ids", metavar="ATTACHMENT_ID...", nargs=-1, required=True, type=int)
+    @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+    @click.pass_context
+    def detach_cmd(
+        ctx: click.Context, record_id: int, attachment_ids: tuple[int, ...], yes: bool
+    ) -> None:
+        """Permanently delete attachments from a record. This cannot be undone.
+
+        ATTACHMENT_ID is the id from 'attachments'.
+        """
+        app_ctx: AppContext = ctx.obj
+        if not yes:
+            if not sys.stdin.isatty():
+                console.print(
+                    "[red]Error: Detach requires confirmation. "
+                    "Use --yes/-y to skip in non-interactive mode.[/red]"
+                )
+                raise typer.Exit(code=EXIT_USAGE)
+            id_list = ", ".join(str(i) for i in attachment_ids)
+            if not click.confirm(
+                f"Delete {len(attachment_ids)} attachment(s) ({id_list}) "
+                f"from {model_name} {record_id}?"
+            ):
+                console.print("[dim]Aborted.[/dim]")
+                raise typer.Exit(code=EXIT_OK)
+
+        try:
+            for attachment_id in attachment_ids:
+                model(ctx).detach(record_id, attachment_id)
+        except FulfilError as exc:
+            handle_error(exc, context=model_name)
+
+        if not app_ctx.quiet:
+            console.print(f"[green]Deleted {len(attachment_ids)} attachment(s).[/green]")
 
     @model_group.command("describe")
     @click.argument("endpoint_name", required=False, default=None)

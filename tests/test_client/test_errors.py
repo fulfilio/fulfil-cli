@@ -7,6 +7,7 @@ from fulfil_cli.client.errors import (
     EXIT_RATE_LIMIT,
     EXIT_SERVER,
     EXIT_VALIDATION,
+    ApplicationError,
     AuthError,
     ForbiddenError,
     NotFoundError,
@@ -53,6 +54,21 @@ def test_error_from_jsonrpc_rate_limit():
     err = error_from_jsonrpc({"code": -32003, "message": "Too many requests"})
     assert isinstance(err, RateLimitError)
     assert err.exit_code == EXIT_RATE_LIMIT
+
+
+def test_error_from_jsonrpc_application_error():
+    # A business rule refusing the request (UserError on the server) is the caller's to fix.
+    err = error_from_jsonrpc(
+        {
+            "code": -32010,
+            "message": "File type not allowed",
+            "data": {"description": "`.exe` files can't be attached: `tool.exe`", "code": "E1000"},
+        }
+    )
+    assert isinstance(err, ApplicationError)
+    assert isinstance(err, ValidationError)
+    assert err.exit_code == EXIT_VALIDATION
+    assert "tool.exe" in err.message
 
 
 def test_error_from_jsonrpc_unknown_code():

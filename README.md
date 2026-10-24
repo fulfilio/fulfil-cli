@@ -144,6 +144,22 @@ fulfil sales_order call confirm --ids 1,2,3
 fulfil sales_order call process --ids 42
 ```
 
+### Attachments
+
+```bash
+# List a record's files, or save them all into a directory
+fulfil sales_order attachments 42
+fulfil sales_order attachments 42 --download ./files
+
+# Upload files and attach them (25 MB per file unless the model sets its own limit)
+fulfil sales_order attach 42 po.pdf packing-slip.pdf
+
+# Delete attachments, by the ids from 'attachments'
+fulfil sales_order detach 42 1093 --yes
+```
+
+Files go straight to and from storage over short-lived signed links, never through the API.
+
 ### Exploring models
 
 ```bash
