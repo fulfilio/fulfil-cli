@@ -471,6 +471,19 @@ class TestAttachmentCommands:
         result = runner.invoke(app, ["sale_order", "attach", "6", str(tmp_path / "nope.pdf")])
         assert result.exit_code == 2
 
+    def test_refused_by_rule_has_no_describe_hint(self, httpx_mock, cli_env, tmp_path):
+        (tmp_path / "tool.exe").write_bytes(b"x")
+        error = {"code": -32010, "message": "File type not allowed"}
+        httpx_mock.add_response(json={"jsonrpc": "2.0", "error": error, "id": 1})
+
+        result = runner.invoke(
+            app, ["sale_order", "attach", "6", str(tmp_path / "tool.exe"), "--format", "json"]
+        )
+        assert result.exit_code == 7
+        err = json.loads(result.stderr)
+        assert err["error"] == "ApplicationError"
+        assert "hint" not in err
+
     def test_detach_needs_yes_without_tty(self, cli_env):
         result = runner.invoke(app, ["sale_order", "detach", "6", "9"])
         assert result.exit_code == 2
