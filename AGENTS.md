@@ -63,6 +63,12 @@ fulfil sales_order call process --ids 42 --format json
 
 # Describe model fields and endpoints
 fulfil sales_order describe --format json
+
+# Attachments: list, download, upload, delete
+fulfil sales_order attachments 42 --format json
+fulfil sales_order attachments 42 --download ./files
+fulfil sales_order attach 42 po.pdf --format json
+fulfil sales_order detach 42 1093 --yes
 ```
 
 ### Filter Operators

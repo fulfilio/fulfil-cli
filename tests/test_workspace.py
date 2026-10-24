@@ -220,3 +220,84 @@ def test_errors_propagate(ws, httpx_mock):
 def test_parse_order():
     assert parse_order("a:desc,b") == {"a": "DESC", "b": "ASC"}
     assert parse_order({"a": "desc"}) == {"a": "DESC"}
+
+
+UPLOAD_URL = "https://storage.example.com/temp"
+FILE_URL = "https://storage.example.com/files/po.pdf?sig=1"
+
+
+def started(max_bytes=1000):
+    return {
+        "upload_token": "tok",
+        "upload": {"method": "POST", "url": UPLOAD_URL, "fields": {"key": "k", "policy": "p"}},
+        "max_bytes": max_bytes,
+        "expires_at": "2026-10-24T09:00:00",
+    }
+
+
+def test_attach_uploads_then_finishes(ws, httpx_mock, tmp_path):
+    path = tmp_path / "po.pdf"
+    path.write_bytes(b"%PDF-1.7")
+    respond(httpx_mock, started())
+    httpx_mock.add_response(url=UPLOAD_URL, method="POST", status_code=204)
+    respond(httpx_mock, {"id": 9, "name": "po.pdf"})
+
+    assert ws["sale"].attach(6, path) == {"id": 9, "name": "po.pdf"}
+
+    start, upload, finish = httpx_mock.get_requests()
+    assert json.loads(start.content)["params"] == {"id": 6, "filename": "po.pdf"}
+    assert "authorization" not in upload.headers and "x-api-key" not in upload.headers
+    body = upload.content
+    # Storage needs the signed fields before the file.
+    assert body.index(b'name="key"') < body.index(b'name="policy"') < body.index(b'name="file"')
+    assert b"%PDF-1.7" in body
+    assert json.loads(finish.content)["params"] == {"id": 6, "upload_token": "tok"}
+
+
+def test_attach_rejects_oversized_file_before_uploading(ws, httpx_mock, tmp_path):
+    path = tmp_path / "big.zip"
+    path.write_bytes(b"x" * 11)
+    respond(httpx_mock, started(max_bytes=10))
+
+    with pytest.raises(ValidationError, match="at most 10 bytes"):
+        ws["sale"].attach(6, path)
+    assert len(httpx_mock.get_requests()) == 1
+
+
+def test_attach_storage_rejection(ws, httpx_mock, tmp_path):
+    path = tmp_path / "po.pdf"
+    path.write_bytes(b"x")
+    respond(httpx_mock, started())
+    httpx_mock.add_response(url=UPLOAD_URL, method="POST", status_code=400, text="EntityTooLarge")
+
+    with pytest.raises(ValidationError, match=r"HTTP 400.*EntityTooLarge"):
+        ws["sale"].attach(6, path)
+    assert len(httpx_mock.get_requests()) == 2
+
+
+def test_attachments_download_and_detach(ws, httpx_mock, tmp_path):
+    attachment = {"id": 9, "name": "po.pdf", "url": FILE_URL}
+    respond(httpx_mock, [attachment])
+    httpx_mock.add_response(url=FILE_URL, content=b"%PDF")
+    httpx_mock.add_response(url=FILE_URL, content=b"%PDF")
+    respond(httpx_mock, None)
+
+    assert ws["sale"].attachments(6) == [attachment]
+    assert ws["sale"].download(attachment, tmp_path) == tmp_path / "po.pdf"
+    # A name already taken falls back to <id>-<name> instead of overwriting.
+    assert ws["sale"].download(attachment, tmp_path) == tmp_path / "9-po.pdf"
+    assert (tmp_path / "9-po.pdf").read_bytes() == b"%PDF"
+    ws["sale"].detach(6, 9)
+
+    calls = [json.loads(r.content) for r in httpx_mock.get_requests() if r.url == URL]
+    assert [(c["method"], c["params"]) for c in calls] == [
+        ("model.sale.get_attachments", {"id": 6}),
+        ("model.sale.delete_attachment", {"id": 6, "attachment_id": 9}),
+    ]
+
+
+def test_download_never_overwrites(ws, tmp_path):
+    (tmp_path / "po.pdf").write_bytes(b"mine")
+    with pytest.raises(ValidationError, match="already exists"):
+        ws["sale"].download({"id": 9, "name": "po.pdf", "url": FILE_URL}, tmp_path / "po.pdf")
+    assert (tmp_path / "po.pdf").read_bytes() == b"mine"
