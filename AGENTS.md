@@ -69,6 +69,11 @@ fulfil sales_order attachments 42 --format json
 fulfil sales_order attachments 42 --download ./files
 fulfil sales_order attach 42 po.pdf --format json
 fulfil sales_order detach 42 1093 --yes
+
+# Metafields: list a model's codes, read values, set by code (null clears)
+fulfil sales_order describe update_metafields --format json
+fulfil sales_order get 42 --fields metafields --format json
+fulfil sales_order call update_metafields --ids 42 --data '{"values": {"priority": "A"}}'
 ```
 
 ### Filter Operators

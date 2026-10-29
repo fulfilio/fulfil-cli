@@ -320,6 +320,7 @@ def create_model_group(model_name: str) -> click.Group:
           fulfil sales_order call confirm --ids 1,2,3
           fulfil sales_order call process --ids 42
           fulfil sales_order call get_attachments --id 42
+          fulfil sales_order call update_metafields --ids 42 --data '{"values": {"priority": "A"}}'
         """
         app_ctx: AppContext = ctx.obj
         if ids and record_id is not None:
@@ -333,7 +334,7 @@ def create_model_group(model_name: str) -> click.Group:
         try:
             result = model(ctx).call(method_name, ids=_parse_ids(ids) if ids else None, **params)
         except FulfilError as exc:
-            handle_error(exc, context=model_name)
+            handle_error(exc, context=model_name, method=method_name)
 
         output(result, fmt=app_ctx.get_effective_format(output_format))
 

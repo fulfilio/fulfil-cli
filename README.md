@@ -160,6 +160,22 @@ fulfil sales_order detach 42 1093 --yes
 
 Files go straight to and from storage over short-lived signed links, never through the API.
 
+### Metafields
+
+Metafields are your workspace's own custom fields. Each model lists its metafields, with their
+codes, types and allowed choices, under `update_metafields`:
+
+```bash
+fulfil sales_order describe update_metafields
+
+# Read the values that are set
+fulfil sales_order get 42 --fields metafields
+
+# Set values by code; null clears one, and fields you leave out keep their values
+fulfil sales_order call update_metafields --ids 42,43 \
+  --data '{"values": {"priority": "A", "promised_on": "2026-11-02", "gift_note": null}}'
+```
+
 ### Exploring models
 
 ```bash
