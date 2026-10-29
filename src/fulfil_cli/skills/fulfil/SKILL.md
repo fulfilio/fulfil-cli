@@ -81,6 +81,26 @@ echo '{"<field>": {"update": [{"ids": [881], "values": {"quantity": 3}}]}}' | fu
   would try to delete the users. To take a record off a list, use `remove`.
 - One object can hold several actions: `{"add": [...], "remove": [...]}`.
 
+### Metafields
+
+Metafields are the workspace's own custom fields. `fulfil <model> describe update_metafields`
+lists the ones a model has under `Metafields`: each field's code, type and, for a choice,
+its `allowed_values`. Read the values with `--fields metafields`. Only fields that have a
+value are returned.
+
+Write them with `update_metafields`, keyed by code. `null` clears a value. Fields you leave
+out keep their values:
+
+```bash
+fulfil <model> call update_metafields --ids <id,id> --data '{"values": {"<code>": "<value>", "<code>": null}}'
+```
+
+- A choice takes its code from `allowed_values`, not its name.
+- A reference takes the referenced record's id. An id that doesn't exist is saved as an
+  empty value without an error, so read the record back after setting one.
+- Pass a `numeric` value as a string, such as `"12.34"`, to keep its precision.
+- Never set metafields with `update`.
+
 ## Files
 
 - `fulfil <model> attachments <id>` lists a record's files. Add `--download <dir>` to save

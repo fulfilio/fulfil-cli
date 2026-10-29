@@ -484,6 +484,18 @@ class TestAttachmentCommands:
         assert err["error"] == "ApplicationError"
         assert "hint" not in err
 
+    def test_call_error_hints_describe_method(self, httpx_mock, cli_env, jsonrpc_success):
+        describe = _endpoints(update_metafields=["ids", "values"])
+        httpx_mock.add_response(json=jsonrpc_success(describe))
+        error = {"code": -32602, "message": "1 validation error for Metafields"}
+        httpx_mock.add_response(json={"jsonrpc": "2.0", "error": error, "id": 1})
+
+        args = ["call", "update_metafields", "--ids", "6", "--data", '{"values": {}}']
+        result = runner.invoke(app, ["sale_order", *args, "--format", "json"])
+        assert result.exit_code == 7
+        hint = json.loads(result.stderr)["hint"]
+        assert hint == "Run 'fulfil sale_order describe update_metafields' to see its parameters."
+
     def test_detach_needs_yes_without_tty(self, cli_env):
         result = runner.invoke(app, ["sale_order", "detach", "6", "9"])
         assert result.exit_code == 2

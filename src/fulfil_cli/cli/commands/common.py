@@ -28,22 +28,32 @@ def _wants_describe_hint(exc: FulfilError) -> bool:
     return isinstance(exc, ValidationError) and not isinstance(exc, ApplicationError)
 
 
-def handle_error(exc: FulfilError, *, context: str | None = None) -> NoReturn:
+def handle_error(
+    exc: FulfilError, *, context: str | None = None, method: str | None = None
+) -> NoReturn:
     """Format a FulfilError for the user and exit.
 
     Uses the current Click context to determine output format.
     When *context* is provided (e.g. a model or report name), it is
-    included in the output for orientation.
+    included in the output for orientation. When *method* is provided,
+    the describe hint points at that method's parameters.
     """
     ctx = click.get_current_context(silent=True)
     app_ctx: AppContext | None = ctx.obj if ctx else None
+
+    describe_hint = None
+    if context and _wants_describe_hint(exc):
+        if method:
+            describe_hint = f"Run 'fulfil {context} describe {method}' to see its parameters."
+        else:
+            describe_hint = f"Run 'fulfil {context} describe' to see valid field names."
 
     if app_ctx and app_ctx.get_effective_format() != "table":
         err = exc.to_dict()
         if context:
             err["context"] = context
-        if not exc.hint and context and _wants_describe_hint(exc):
-            err["hint"] = f"Run 'fulfil {context} describe' to see valid field names."
+        if not exc.hint and describe_hint:
+            err["hint"] = describe_hint
         print_json(err, file=sys.stderr)
         raise typer.Exit(code=exc.exit_code)
 
@@ -51,8 +61,8 @@ def handle_error(exc: FulfilError, *, context: str | None = None) -> NoReturn:
     console.print(f"[red]Error ({label}): {exc}[/red]")
     if exc.hint:
         console.print(f"[dim]Hint: {exc.hint}[/dim]")
-    elif app_ctx and not app_ctx.quiet and context and _wants_describe_hint(exc):
-        console.print(f"[dim]Hint: Run 'fulfil {context} describe' to see valid field names.[/dim]")
+    elif app_ctx and not app_ctx.quiet and describe_hint:
+        console.print(f"[dim]Hint: {describe_hint}[/dim]")
     raise typer.Exit(code=exc.exit_code)
 
 
