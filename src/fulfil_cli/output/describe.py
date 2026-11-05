@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 
@@ -99,10 +100,10 @@ def _parameters_table(title: str, params: list[dict[str, Any]]) -> Table:
     for p in params:
         req = "[green]✓[/green]" if p.get("required") else ""
         table.add_row(
-            p.get("name", ""),
-            p.get("type", ""),
+            escape(p.get("name") or ""),
+            escape(p.get("type") or ""),
             req,
-            p.get("description", ""),
+            escape(p.get("description") or ""),
         )
     return table
 
@@ -116,7 +117,7 @@ def print_endpoint_detail(endpoint: dict[str, Any], model: str) -> None:
 
     console.print(f"[bold]{model}.{name}[/bold]")
     if desc:
-        console.print(f"  {desc}")
+        console.print(f"  {escape(desc)}")
     console.print()
 
     # The first schema is the request body itself; the rest are models it references.
