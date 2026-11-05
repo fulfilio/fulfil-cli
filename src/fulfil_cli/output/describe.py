@@ -88,6 +88,25 @@ def print_model_describe(data: dict[str, Any]) -> None:
     console.print(table)
 
 
+def _parameters_table(title: str, params: list[dict[str, Any]]) -> Table:
+    """A table of an endpoint's parameters, or of a model they reference."""
+    table = Table(title=title, show_lines=False, title_style="bold")
+    table.add_column("Name", style="cyan", no_wrap=True)
+    table.add_column("Type", no_wrap=True)
+    table.add_column("Required", justify="center", no_wrap=True)
+    table.add_column("Description")
+
+    for p in params:
+        req = "[green]✓[/green]" if p.get("required") else ""
+        table.add_row(
+            p.get("name", ""),
+            p.get("type", ""),
+            req,
+            p.get("description", ""),
+        )
+    return table
+
+
 def print_endpoint_detail(endpoint: dict[str, Any], model: str) -> None:
     """Render detailed info for a single endpoint."""
     console = Console()
@@ -100,24 +119,14 @@ def print_endpoint_detail(endpoint: dict[str, Any], model: str) -> None:
         console.print(f"  {desc}")
     console.print()
 
-    params = endpoint.get("parameters", [])
+    # The first schema is the request body itself; the rest are models it references.
+    schemas = endpoint.get("body_schemas") or {}
+    body, *referenced = schemas.items() or [(None, [])]
+    params = [*(endpoint.get("parameters") or []), *body[1]]
     if params:
-        table = Table(title="Parameters", show_lines=False, title_style="bold")
-        table.add_column("Name", style="cyan", no_wrap=True)
-        table.add_column("Type", no_wrap=True)
-        table.add_column("Required", justify="center", no_wrap=True)
-        table.add_column("Description")
-
-        for p in params:
-            req = "[green]✓[/green]" if p.get("required") else ""
-            table.add_row(
-                p.get("name", ""),
-                p.get("type", ""),
-                req,
-                p.get("description", ""),
-            )
-
-        console.print(table)
+        console.print(_parameters_table("Parameters", params))
+        for model_name, fields in referenced:
+            console.print(_parameters_table(model_name, fields))
     else:
         console.print("[dim]No parameters.[/dim]")
 
