@@ -60,3 +60,27 @@ def test_says_so_when_there_are_no_parameters(capsys):
     print_endpoint_detail({"rpc_name": "ping", "parameters": [], "body_schemas": {}}, "system")
 
     assert "No parameters." in capsys.readouterr().out
+
+
+def test_keeps_square_brackets_as_text(capsys):
+    print_endpoint_detail(
+        {
+            "rpc_name": "create_order",
+            "description": "Takes [type, value] pairs",
+            "body_schemas": {
+                "Params": [
+                    {
+                        "name": "operations",
+                        "type": "list[tploperation]",
+                        "description": "Each as [type, value], or [/closing]",
+                    }
+                ]
+            },
+        },
+        "sales_channel",
+    )
+
+    out = capsys.readouterr().out
+    assert "Takes [type, value] pairs" in out
+    assert "list[tploperation]" in out
+    assert "[/closing]" in out
