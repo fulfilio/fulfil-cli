@@ -99,11 +99,14 @@ def _parameters_table(title: str, params: list[dict[str, Any]]) -> Table:
 
     for p in params:
         req = "[green]✓[/green]" if p.get("required") else ""
+        description = p.get("description") or ""
+        if allowed := p.get("allowed_values"):
+            description = f"{description}\nAllowed: {', '.join(map(str, allowed))}".strip()
         table.add_row(
             escape(p.get("name") or ""),
             escape(p.get("type") or ""),
             req,
-            escape(p.get("description") or ""),
+            escape(description),
         )
     return table
 

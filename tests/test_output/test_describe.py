@@ -28,6 +28,25 @@ def test_shows_the_request_body_as_parameters(capsys):
     assert "No parameters." not in out
 
 
+def test_shows_the_allowed_values(capsys):
+    operations = {
+        **_field("operations", required=True),
+        "type": "list[tploperation]",
+        "allowed_values": ["authenticate", "send_shipping_orders"],
+    }
+    print_endpoint_detail(
+        {
+            "rpc_name": "create_tpl_integration",
+            "body_schemas": {"CreateParams": [operations]},
+        },
+        "agentic_integration",
+    )
+
+    out = capsys.readouterr().out
+    assert "Allowed: authenticate," in out
+    assert "send_shipping_orders" in out
+
+
 def test_shows_models_the_request_body_references(capsys):
     print_endpoint_detail(
         {
