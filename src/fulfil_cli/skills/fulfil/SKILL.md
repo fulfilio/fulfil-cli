@@ -17,21 +17,64 @@ Data goes to stdout and errors go to stderr.
    and use the exact `model_name` from the result. Run `fulfil models --format json` if the
    search finds nothing.
 3. `fulfil <model> describe --format json` lists the model's fields and methods. Take field
-   names from it. `fulfil <model> describe <method>` shows a method's parameters.
+   names from it, and never guess one. A record's creation time, for example, is
+   `created_at`, but older workspaces call it `create_date`. In the JSON, `fields` is a list
+   of objects, each with `name`, `type` and, for a link to other records, `relation_model`.
+   Look a field up by its `name`; don't index `fields` by field name.
+   `fulfil <model> describe <method>` shows a method's parameters.
+
+## Filters (`--where`)
+
+`--where` takes a JSON object. A plain value means equals: `{"state": "confirmed"}`.
+For anything else, use one of these operators. Nothing else is accepted: no SQL, no Python.
+
+| Instead of                   | Write                                          |
+|------------------------------|------------------------------------------------|
+| `like`, `ilike`, `%text%`    | `{"name": {"contains": "walmart"}}`            |
+| `like 'text%'`               | `{"name": {"startswith": "WAL"}}`              |
+| `like '%text'`               | `{"name": {"endswith": "-01"}}`                |
+| `!=`, `<>`                   | `{"state": {"ne": "done"}}`                    |
+| `not in`                     | `{"state": {"not_in": ["done", "cancelled"]}}` |
+| `in`                         | `{"id": {"in": [12, 15]}}`                     |
+| `>`, `>=`, `<`, `<=`         | `{"created_at": {"gte": "2026-11-01"}}` (`gt`, `gte`, `lt`, `lte`) |
+| `OR`, `\|\|`                 | `{"or": [{"state": "draft"}, {"state": "quotation"}]}` |
+
+- `contains`, `startswith` and `endswith` ignore case, so one condition covers "Vitamin" and
+  "VITAMIN". Pass the bare text: the operator adds the wildcards, so don't add `%`.
+- Keys in one object must all match (AND). Several operators on one field combine the same
+  way: `{"total_amount": {"gte": 100, "lt": 500}}`.
+- `or` takes a list of filter objects and sits beside other keys:
+  `{"state": "confirmed", "or": [{"reference": {"contains": "acme"}}, {"reference": {"startswith": "PO"}}]}`.
+- Dates take `yyyy-mm-dd`. Datetimes take ISO 8601 in UTC (`2026-11-01T00:00:00`); a bare
+  date means midnight UTC.
+- An error on a filter is usually a field name that doesn't exist. Check it in `describe`.
+
+Worked examples:
+
+```bash
+# Text search: orders whose reference mentions Walmart, in any case
+fulfil sales_order list --where '{"reference": {"contains": "walmart"}}' --fields id,reference
+# Not equal: shipments that aren't done
+fulfil customer_shipment list --where '{"state": {"ne": "done"}}' --fields id,state
+# Not in: orders that are neither done nor cancelled
+fulfil sales_order count --where '{"state": {"not_in": ["done", "cancelled"]}}'
+```
+
+Model names and state values above are examples. Check both with `models` and `describe`.
 
 ## Reading
 
 - `fulfil <model> list --where '<json>' --fields <a,b> --order <field:desc>`
-- `--where` is MongoDB-style: `{"state": "confirmed"}`, `{"sale_date": {"gte": "2025-01-01"}}`,
-  `{"or": [{...}, {...}]}`. Operators: gt, gte, lt, lte, ne, in, not_in, contains,
-  startswith, endswith. `--fields` accepts dotted paths such as `party.name`.
+- `--fields` accepts dotted paths such as `channel.name`.
 - `list` returns one page: `{"data": [...], "pagination": {"has_more": true, "next_cursor": "..."}}`.
   While `has_more` is true, get the next page by passing the `next_cursor` token:
   `--cursor <next_cursor>` with the same `--where`, `--fields` and `--order`.
 - Page only with the cursor token. Don't page with offsets, and don't raise `--limit` to
   fetch everything at once. `--limit` is only the page size (20 by default, at most 500).
 - `fulfil <model> count --where '<json>'` gives totals. Don't count by listing.
-- `fulfil <model> get <id,id>` returns records by id. Add `--fields` for specific fields.
+- `fulfil <model> get <id,id>` returns records by id: one argument, comma-separated with no
+  spaces (`get 12,15`, not `get 12 15`). Add `--fields` for specific fields. To combine ids
+  with other conditions, use `list --where '{"id": {"in": [12, 15]}, ...}'`.
 
 ## Before you change anything
 
@@ -116,6 +159,9 @@ fulfil <model> call update_metafields --ids <id,id> --data '{"values": {"<code>"
 Exit codes: 2 bad arguments, 3 config, 4 auth, 5 not found, 6 forbidden, 7 validation,
 8 rate limited, 9 server, 10 network. A validation error names the field at fault.
 
+"Calling method X on Y is not allowed" usually means the model has no method by that name,
+not that you lack permission. Find the right name in `fulfil <model> describe`.
+
 Read the error and fix what you can. Don't retry the same failing call. If you can't
 make the change, say plainly what you couldn't do and why.
 
@@ -128,5 +174,5 @@ for you:
 from fulfil_cli import Workspace
 
 with Workspace("<workspace>.fulfil.io") as ws:
-    rows = ws["<model>"].find({"state": "draft"}, fields="id,party.name")
+    rows = ws["<model>"].find({"state": "draft"}, fields="id,channel.name")
 ```
